@@ -1,0 +1,10 @@
+{
+  "name": "Life Hub",
+  "short_name": "Life Hub",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#03120c",
+  "theme_color": "#071b13",
+  "description": "A private personal Life OS.",
+  "icons": []
+}
