@@ -454,3 +454,8 @@ The V36 controller now contains the intended Today/Attention, Relationships, Mon
 - Renamed runtime modules to `data-v40.js` and `script-v40.js` so an old `script.js?v=36` cannot be reused by GitHub Pages/browser cache.
 - Added favicon links to prevent the default root-level `/favicon.ico` 404.
 - Service worker cache now points only to the V40 filenames.
+
+
+## V41 — Settings redesign
+- Reworked Settings into grouped sections with a profile header, status chips, cleaner cards, dedicated notification controls, and an isolated danger zone.
+- Preserved all existing Settings IDs and actions so backend behavior remains unchanged.
