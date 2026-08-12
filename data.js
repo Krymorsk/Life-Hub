@@ -2,10 +2,12 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/12.16.0/fireba
 import {
   getAuth, signInAnonymously, onAuthStateChanged,
   GoogleAuthProvider, linkWithPopup, linkWithRedirect,
-  EmailAuthProvider, linkWithCredential, signOut
+  EmailAuthProvider, linkWithCredential, signOut, sendPasswordResetEmail, deleteUser
 } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js";
 import {
   getFirestore,
+  initializeFirestore,
+  persistentLocalCache,
   collection,
   doc,
   getDocs,
@@ -13,6 +15,7 @@ import {
   setDoc,
   deleteDoc,
   writeBatch,
+  runTransaction,
   query,
   orderBy,
   serverTimestamp,
@@ -34,7 +37,15 @@ const auth = getAuth(app);
 
 // Firestore's current persistent cache API keeps the app useful offline
 // and synchronizes writes when connectivity returns.
-const db = getFirestore(app);
+let db;
+try {
+  db = initializeFirestore(app, {
+    localCache: persistentLocalCache()
+  });
+} catch (error) {
+  console.warn("Persistent Firestore cache unavailable; using standard Firestore.", error);
+  db = getFirestore(app);
+}
 
 const STORES = [
   "people","accounts","transactions","goals","projects","tasks","events",
@@ -79,7 +90,7 @@ function unsubscribeAll(){
 }
 
 const SCHEMA = {
-  version: 5,
+  version: 9,
   backend: "firebase-firestore",
   entities: STORES,
   relationships: [
@@ -173,6 +184,13 @@ async function linkEmailPassword(email, password) {
   return result.user;
 }
 
+
+async function sendPasswordReset(email) {
+  if (!email) throw new Error("No account email is available.");
+  await sendPasswordResetEmail(auth, email);
+  return true;
+}
+
 async function disconnectSession() {
   await signOut(auth);
   currentUser = null;
@@ -220,6 +238,7 @@ async function create(store, item) {
   const value = {
     ...item,
     id,
+    ownerId: user.uid,
     createdAt: item.createdAt || serverTimestamp(),
     updatedAt: serverTimestamp()
   };
@@ -314,6 +333,41 @@ async function persistState(state) {
   return true;
 }
 
+
+async function runAtomic(work) {
+  const user = await ensureAuth();
+  return runTransaction(db, async transaction => work(transaction, user));
+}
+
+async function replaceUserData(snapshot) {
+  const user = await ensureAuth();
+  if (!snapshot || !snapshot.stores) throw new Error("Invalid Life Hub backup.");
+  const stores = Object.keys(snapshot.stores);
+  for (const store of stores) {
+    const rows = Array.isArray(snapshot.stores[store]) ? snapshot.stores[store] : [];
+    for (let i=0;i<rows.length;i+=400) {
+      const batch = writeBatch(db);
+      rows.slice(i,i+400).forEach(row => {
+        const id = row.id || crypto.randomUUID();
+        batch.set(
+          doc(db,"users",user.uid,store,id),
+          {...row,id,ownerId:user.uid,restoredAt:serverTimestamp()},
+          {merge:true}
+        );
+      });
+      await batch.commit();
+    }
+  }
+  return true;
+}
+
+async function deleteAccountAndData() {
+  const user = await ensureAuth();
+  await reset();
+  await deleteUser(user);
+  currentUser = null;
+}
+
 async function exportAll() {
   const stores = {};
   for (const store of STORES) stores[store] = await all(store);
@@ -350,7 +404,7 @@ async function search(queryText) {
     ["goals","Goals"],["projects","Projects"],["tasks","Tasks"],["events","Events"],
     ["habits","Habits"],["wishlist","Wishlist"],["notes","Notes"],["journal","Journal"],
     ["documents","Documents"],["assets","Assets"],["subscriptions","Subscriptions"],
-    ["lifePlans","Life Plans"],["reminders","Reminders"]
+    ["lifePlans","Life Plans"],["reminders","Reminders"],["accounts","Accounts"],["budgets","Budgets"],["routines","Routines"]
   ];
 
   for (const [store,label] of searchable) {
@@ -380,7 +434,7 @@ async function initialize() {
 export const LifeFirebase = {
   app, auth, db, firebaseError,
   getUser: () => currentUser,
-  linkGoogle, linkEmailPassword, disconnectSession, authProviders,
+  linkGoogle, linkEmailPassword, disconnectSession, authProviders, sendPasswordReset,
   addInterval
 };
 export const LifeDB = {
@@ -388,6 +442,6 @@ export const LifeDB = {
   initialize, loadState, persistState, create, get, remove,
   linksFor, getAllProjects, getUserProfile, saveUserProfile,
   deleteStoreRecord, getRelationshipsFor, link, exportAll, reset, search, all,
-  subscribe, unsubscribeAll
+  subscribe, unsubscribeAll, runAtomic, replaceUserData, deleteAccountAndData
 };
 

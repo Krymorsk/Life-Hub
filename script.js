@@ -26,7 +26,7 @@ const pageMeta = {
   family:["PEOPLE","People & relationships"], journal:["MEMORY","Journal"], notes:["CAPTURE","Notes"],
   habits:["SYSTEMS","Habits & routines"], calendar:["TIME","Plan"], vault:["PRIVATE","Private vault"],
   documents:["ASSETS","Documents"], health:["WELLBEING","Wellbeing"], "life-plan":["VISION","Life plan"],
-  tasks:["ACTION","Tasks"], assets:["LIFE ADMIN","Assets & subscriptions"],
+  tasks:["ACTION","Tasks"], assets:["LIFE ADMIN","Assets & subscriptions"], reminders:["ATTENTION","Reminders"],
   insights:["REFLECTION","Life insights"], settings:["CONTROL","Settings"]
 };
 
@@ -128,21 +128,18 @@ function updateHome(){
 }
 
 function renderToday(){
-  const box=$("#todayFocusItems");
-  if(!box) return;
-  const pending = state.tasks.filter(t=>!t.done).map(t=>({
-    type:"task", id:t.id, title:t.title, meta:t.dueAt?fmtDate(t.dueAt):"Next action"
-  }));
-  const events = state.events
-    .filter(e=>e.startAt && new Date(e.startAt)>=new Date())
-    .sort((a,b)=>new Date(a.startAt)-new Date(b.startAt))
-    .map(e=>({type:"event",id:e.id,title:e.title,meta:fmtDate(e.startAt)}));
-  const items=[...pending,...events].slice(0,4);
-  box.innerHTML=items.length ? items.map(x=>`
-    <button class="focus-item" data-open-record="${esc(x.type)}" data-id="${esc(x.id)}">
-      <span>${x.type==="task"?"○":"◷"}</span><b>${esc(x.title)}</b><small>${esc(x.meta)}</small>
-    </button>`).join("") :
-    `<button class="today-empty" id="todayEmptyAdd"><span>＋</span><strong>No plans yet</strong><small>Add a task or event</small></button>`;
+  const box=$("#todayFocusItems"); if(!box)return;
+  const nowDate=new Date();
+  const overdue=state.tasks.filter(t=>!t.done&&t.dueAt&&new Date(t.dueAt)<nowDate).sort((a,b)=>new Date(a.dueAt)-new Date(b.dueAt));
+  const today=state.tasks.filter(t=>!t.done&&t.dueAt&&new Date(t.dueAt).toDateString()===nowDate.toDateString());
+  const events=state.events.filter(e=>e.startAt&&new Date(e.startAt)>=nowDate).sort((a,b)=>new Date(a.startAt)-new Date(b.startAt));
+  const main=[...overdue,...today,...events].slice(0,6);
+  const summary=`<div class="today-summary"><span><b>${overdue.length}</b><small>Overdue</small></span><span><b>${today.length}</b><small>Today</small></span><span><b>${events.filter(e=>(new Date(e.startAt)-nowDate)/36e5<=48).length}</b><small>48h</small></span><span><b>${state.goals.filter(g=>Number(g.progress||0)<100).length}</b><small>Goals</small></span></div>`;
+  const rows=main.length?main.map(x=>{
+    const type=x.startAt?"event":"task", meta=x.startAt?fmtDate(x.startAt):(x.dueAt?fmtDate(x.dueAt):"Next action");
+    return `<button class="focus-item" data-open-record="${type}" data-id="${esc(x.id)}"><span>${type==="task"?"○":"◷"}</span><b>${esc(x.title)}</b><small>${esc(meta)}</small></button>`;
+  }).join(""):`<button class="today-empty" id="todayEmptyAdd"><span>＋</span><strong>No plans yet</strong><small>Add a task or event</small></button>`;
+  box.innerHTML=summary+rows;
 }
 
 function renderUpcoming(){
@@ -160,19 +157,47 @@ function renderUpcoming(){
   `<div class="empty"><strong>Nothing upcoming</strong><span>Add an event when something matters.</span></div>`;
 }
 
+function attentionItems(){
+  const nowDate=new Date(), items=[];
+  const push=(priority,type,title,meta,id)=>items.push({priority,type,title,meta,id});
+  state.tasks.filter(t=>!t.done).forEach(t=>{
+    if(!t.dueAt){push(1,"task",t.title,"Open task",t.id);return;}
+    const d=new Date(t.dueAt); if(Number.isNaN(d.getTime())) return;
+    const hrs=(d-nowDate)/36e5;
+    if(hrs<0) push(5,"task",t.title,`Overdue · ${fmtDate(t.dueAt)}`,t.id);
+    else if(hrs<=24) push(4,"task",t.title,`Due today · ${fmtDate(t.dueAt)}`,t.id);
+    else if(hrs<=72) push(2,"task",t.title,`Due soon · ${fmtDate(t.dueAt)}`,t.id);
+  });
+  state.events.forEach(e=>{
+    const d=e.startAt?new Date(e.startAt):null; if(!d||Number.isNaN(d.getTime())) return;
+    const hrs=(d-nowDate)/36e5; if(hrs>=0&&hrs<=48) push(3,"event",e.title,`Coming up · ${fmtDate(e.startAt)}`,e.id);
+  });
+  state.subscriptions.forEach(s=>{
+    const d=s.renewalDate?new Date(s.renewalDate):null; if(!d||Number.isNaN(d.getTime())) return;
+    const days=(d-nowDate)/864e5; if(days>=-1&&days<=7) push(3,"subscription",s.name||s.title,`Renewal · ${fmtDate(s.renewalDate)}`,s.id);
+  });
+  state.people.forEach(p=>{
+    if(!p.birthday)return; const b=new Date(p.birthday); if(Number.isNaN(b.getTime()))return;
+    const d=new Date(nowDate.getFullYear(),b.getMonth(),b.getDate()); let days=Math.round((d-nowDate)/864e5); if(days<0)days+=365;
+    if(days<=14)push(2,"person",p.name||"Birthday",`Birthday · ${d.toLocaleDateString("en-IN",{day:"2-digit",month:"short"})}`,p.id);
+  });
+  state.goals.forEach(g=>{
+    if(!g.targetDate)return; const d=new Date(g.targetDate); if(Number.isNaN(d.getTime()))return;
+    const days=(d-nowDate)/864e5; if(days>=0&&days<=14&&Number(g.progress||0)<100)push(4,"goal",g.title,`Deadline · ${fmtDate(g.targetDate)}`,g.id);
+  });
+  return items.sort((a,b)=>b.priority-a.priority).slice(0,8);
+}
 function renderAttention(){
-  const pending = state.tasks.filter(t=>!t.done);
-  const upcoming = state.events.filter(e=>e.startAt && new Date(e.startAt)>=new Date());
-  const goalProgress = state.goals.length ?
-    Math.round(state.goals.reduce((a,g)=>a+Number(g.progress||0),0)/state.goals.length) : 0;
-  const bits=[];
-  if(pending.length) bits.push(`${pending.length} task${pending.length===1?"":"s"}`);
-  if(upcoming.length) bits.push(`${upcoming.length} upcoming`);
-  if(state.goals.length) bits.push(`${state.goals.length} goal${state.goals.length===1?"":"s"}`);
-  $("#attentionTitle").textContent = bits.length ? bits.join(" · ") : "Your attention queue is empty";
-  $("#attentionText").textContent = bits.length
-    ? `Average goal progress is ${goalProgress}%. Review what deserves your attention today.`
-    : "Add a goal, task or event and Life Hub will surface what needs you.";
+  const items=attentionItems();
+  if(!items.length){
+    $("#attentionTitle").textContent="Your attention queue is empty";
+    $("#attentionText").textContent="Nothing urgent is asking for you right now.";
+    $("#attentionCard")?.classList.remove("attention-hot");
+    return;
+  }
+  $("#attentionTitle").textContent=`${items.length} things worth checking`;
+  $("#attentionText").textContent=items.slice(0,2).map(x=>x.title).join(" · ");
+  $("#attentionCard")?.classList.add("attention-hot");
 }
 
 function renderPulse(){
@@ -240,7 +265,7 @@ function renderPage(page){
     finances:renderFinances,goals:renderGoals,wishlist:renderWishlist,family:renderFamily,
     journal:renderJournal,notes:renderNotes,habits:renderHabits,calendar:renderCalendar,
     vault:renderVault,documents:renderDocuments,health:renderHealth,"life-plan":renderLifePlan,
-    tasks:renderTasks,assets:renderAssets,insights:renderInsights,settings:renderSettings
+    tasks:renderTasks,assets:renderAssets,reminders:renderReminders,insights:renderInsights,settings:renderSettings
   };
   $("#pageContent").innerHTML=(renderers[page]||renderGeneric)();
   $("#pageAction").onclick=()=>openAddFor(page);
@@ -414,6 +439,53 @@ function renderInsights(){
     +`<div class="data-grid"><div class="data-card glass"><small>GOAL PROGRESS</small><b>${avgGoal}%</b></div><div class="data-card glass"><small>OPEN TASKS</small><b>${open}</b></div><div class="data-card glass"><small>COMPLETED</small><b>${completed}</b></div><div class="data-card glass"><small>UPCOMING EVENTS</small><b>${state.events.filter(e=>e.startAt&&new Date(e.startAt)>=new Date()).length}</b></div></div>`;
 }
 
+
+function renderRelationships(){
+  const nodes=[["GOALS",state.goals.length,"goals"],["PROJECTS",state.projects.length,"goals"],["TASKS",state.tasks.length,"tasks"],["EVENTS",state.events.length,"calendar"],["PEOPLE",state.people.length,"family"],["MONEY",state.transactions.length,"finances"],["WISHLIST",state.wishes.length,"wishlist"],["NOTES",state.notes.length,"notes"]];
+  const rel=[["Goal → Projects",state.projects.filter(p=>p.goalId).length],["Project → Tasks",state.tasks.filter(t=>t.projectId).length],["Goal → Tasks",state.tasks.filter(t=>t.goalId).length],["Goal → Events",state.events.filter(e=>e.goalId).length],["Person → Events",state.events.filter(e=>e.personId).length],["Wishlist → Purchases",state.transactions.filter(t=>t.relatedWishlistId).length]];
+  return shellIntro("See how your life connects","Relationships are first-class records, not hidden links.")
+    +`<div class="relationship-graph">${nodes.map(n=>`<button class="relation-node glass" data-page="${esc(n[2])}"><span>${esc(n[0])}</span><b>${n[1]}</b></button>`).join("")}</div>
+    <div class="section-mini"><span class="section-kicker">RELATIONSHIPS</span><h4>Connected records</h4></div>
+    <div class="list">${rel.map(r=>`<div class="list-row glass"><div class="main-copy"><b>${esc(r[0])}</b><small>Linked records</small></div><span class="value">${r[1]}</span></div>`).join("")}</div>`;
+}
+function renderMoneyPlan(){
+  const income=state.transactions.filter(x=>x.type==="in").reduce((a,x)=>a+Number(x.amount||0),0);
+  const expense=state.transactions.filter(x=>x.type==="out").reduce((a,x)=>a+Math.abs(Number(x.amount||0)),0);
+  const recurring=state.subscriptions.reduce((a,x)=>a+Number(x.amount||0),0);
+  return shellIntro("Money plan","Accounts, recurring commitments and goals in one financial context.")
+    +`<div class="data-grid"><div class="data-card glass"><small>BALANCE</small><b>${money(state.balance)}</b></div><div class="data-card glass"><small>RECURRING</small><b>${money(recurring)}</b></div><div class="data-card glass"><small>IN</small><b>${money(income)}</b></div><div class="data-card glass"><small>OUT</small><b>${money(expense)}</b></div></div>
+    <div class="action-row"><button class="primary" id="newAccountBtn">+ Account</button><button class="secondary" id="newBudgetBtn">+ Budget</button></div>
+    <div class="list">${state.accounts.length?state.accounts.map(a=>`<div class="list-row glass"><div class="main-copy"><b>${esc(a.name)}</b><small>${esc(a.type||"Account")}</small></div><span class="value">${money(a.balance||0)}</span></div>`).join(""):`<div class="empty glass"><strong>No accounts yet</strong><span>Add HDFC, Axis, cash, cards or other real buckets.</span></div>`}</div>`;
+}
+function renderRoutines(){
+  const rows=state.routines.map(r=>`<div class="list-row glass"><div class="main-copy"><b>${esc(r.title)}</b><small>${esc(r.frequency||"Routine")}</small></div><div class="entity-actions"><button class="mini-action" data-toggle-routine="${esc(r.id)}">${r.enabled===false?"Enable":"Pause"}</button><button class="mini-action danger-mini" data-delete-store="routines" data-delete-id="${esc(r.id)}" data-delete-label="routine">Delete</button></div></div>`).join("");
+  return shellIntro("Routines","Repeatable sequences that shape your days.")+`<div class="action-row"><button class="primary" id="newRoutineBtn">+ Routine</button></div><div class="list">${rows||`<div class="empty glass"><strong>No routines yet</strong><span>Add a morning, work, evening or weekly reset routine.</span></div>`}</div>`;
+}
+function renderLifeReview(){
+  const done=state.tasks.filter(t=>t.done).length, open=state.tasks.filter(t=>!t.done).length;
+  const avg=state.goals.length?Math.round(state.goals.reduce((a,g)=>a+Number(g.progress||0),0)/state.goals.length):0;
+  const net=state.transactions.reduce((a,x)=>a+Number(x.amount||0),0);
+  return shellIntro("Life review","A simple mirror of your real progress, workload and money movement.")
+    +`<div class="data-grid"><div class="data-card glass"><small>GOAL AVG</small><b>${avg}%</b></div><div class="data-card glass"><small>DONE</small><b>${done}</b></div><div class="data-card glass"><small>OPEN</small><b>${open}</b></div><div class="data-card glass"><small>NET</small><b>${money(net)}</b></div></div>
+    <div class="list"><div class="list-row glass"><div class="main-copy"><b>What moved forward?</b><small>${done?`${done} completed task${done===1?"":"s"}.`:"Nothing completed yet."}</small></div></div>
+    <div class="list-row glass"><div class="main-copy"><b>What is slipping?</b><small>${open?`${open} open task${open===1?"":"s"} remain.`:"No open tasks."}</small></div></div>
+    <div class="list-row glass"><div class="main-copy"><b>What deserves more attention?</b><small>${attentionItems().slice(0,2).map(x=>x.title).join(" · ")||"Nothing urgent."}</small></div></div></div>`;
+}
+
+
+function renderReminders(){
+  const rows=(state.reminders||[]).map(r=>`<div class="list-row glass">
+    <div class="main-copy"><b>${esc(r.title)}</b><small>${esc(r.remindAt?fmtDate(r.remindAt):"No date")}${r.repeat?` · ${esc(r.repeat)}`:""}</small></div>
+    <div class="entity-actions">
+      <button class="mini-action" data-toggle-reminder="${esc(r.id)}">${r.enabled===false?"Off":"On"}</button>
+      <button class="mini-action danger-mini" data-delete-store="reminders" data-delete-id="${esc(r.id)}" data-delete-label="reminder">Delete</button>
+    </div>
+  </div>`).join("");
+  return shellIntro("Reminders","Simple reminders live in Firestore and are checked while Life Hub is open.")
+    +`<div class="action-row"><button class="primary" id="newReminderBtn">+ Reminder</button><button class="secondary" id="notifyBtn">Enable notifications</button></div>
+      <div class="list">${rows||`<div class="empty glass"><strong>No reminders yet</strong><span>Add a reminder when missing something would actually cost you.</span></div>`}</div>`;
+}
+
 function renderSettings(){
   const user=LifeFirebase?.getUser?.();
   return shellIntro("Make it yours","Life Hub is backed by Firebase Cloud Firestore.")
@@ -421,7 +493,7 @@ function renderSettings(){
       <div class="list-row glass"><div class="main-copy"><b>Cloud database</b><small>Cloud Firestore is authoritative.</small></div><span class="value positive">Connected</span></div>
       <div class="list-row glass"><div class="main-copy"><b>Firebase identity</b><small>${user?`Authenticated · ${user.isAnonymous?"anonymous":"account"}`:"Not connected"}</small></div><span class="value ${user?"positive":"negative"}">${user?"Active":"Offline"}</span></div>
       <div class="list-row glass"><div class="main-copy"><b>Local development</b><small>Add <b>127.0.0.1</b> and <b>localhost</b> under Firebase → Authentication → Settings → Authorized domains for OAuth-ready local testing.</small></div><span class="value">Dev</span></div>
-      <div class="list-row glass"><div class="main-copy"><b>Data model</b><small>Versioned entities and relationships.</small></div><span class="value positive">V4</span></div>
+<div class="list-row glass"><div class="main-copy"><b>Password</b><small>Send a secure Firebase password-reset email to your account.</small></div><button class="mini-action" id="settingsResetPassword">Reset password</button></div>      <div class="list-row glass"><div class="main-copy"><b>Data model</b><small>Versioned entities and relationships.</small></div><span class="value positive">V4</span></div>
       <div class="list-row glass" id="exportRow"><div class="main-copy"><b>Export data</b><small>Download the complete Firestore snapshot as JSON.</small></div><span class="value">→</span></div>
 <button class="settings-action-row glass" id="signOutRow" type="button">
         <div class="main-copy"><b>Sign out</b><small>Return to the Life Hub login page.</small></div>
@@ -480,6 +552,7 @@ function openQuickCapture(){
 
 function openEntryForm(type){
   const actions=`<div class="form-actions"><button class="secondary" data-close-modal>Cancel</button><button class="primary" id="saveForm">Save</button></div>`;
+    reminder:["NEW REMINDER","Attention",`<div class="form"><div class="field"><label>REMINDER</label><input id="fTitle" placeholder="What do you want to remember?"></div><div class="field"><label>WHEN</label><input id="fDate" type="datetime-local"></div><div class="field"><label>REPEAT</label><select id="fRepeat"><option value="">One time</option><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option></select></div>${actions}</div>`],
   const forms={
     expense:["ADD EXPENSE","Money",`<div class="form"><div class="field"><label>WHAT?</label><input id="fTitle" placeholder="Groceries, fuel, bill..."></div><div class="field"><label>AMOUNT (₹)</label><input id="fAmount" type="number" min="0" placeholder="0"></div><div class="field"><label>CATEGORY</label><input id="fCat" placeholder="Living, travel, food..."></div>${actions}</div>`],
     income:["ADD INCOME","Money",`<div class="form"><div class="field"><label>WHAT?</label><input id="fTitle" placeholder="Salary, bonus, refund..."></div><div class="field"><label>AMOUNT (₹)</label><input id="fAmount" type="number" min="0" placeholder="0"></div>${actions}</div>`],
@@ -554,6 +627,14 @@ async function saveForm(type){
     } else if(type==="asset"){
       record=await create("assets",{name:$("#fTitle").value||"Asset",category:$("#fCat").value||"",value:Number($("#fAmount").value||0)});
       state.assets.push(record);
+    } else if(type==="reminder"){
+      record=await create("reminders",{
+        title:$("#fTitle").value||"Reminder",
+        remindAt:$("#fDate").value||null,
+        repeat:$("#fRepeat").value||"",
+        enabled:true
+      });
+      state.reminders.push(record);
     } else if(type==="lifePlan"){
       const profile=state.profile||{};
       profile.values=[...(profile.values||[]),{title:$("#fTitle").value||"",detail:$("#fText").value||""}];
@@ -710,6 +791,16 @@ function refreshCurrentView(){
 }
 
 
+
+async function resetPasswordFromSettings(){
+  const email=LifeFirebase.getUser?.()?.email;
+  if(!email){ toast("This account has no email address."); return; }
+  try{
+    await LifeFirebase.sendPasswordReset(email);
+    toast("Password reset email sent");
+  }catch(error){ toast(fireError(error)); }
+}
+
 async function signOutAndLeave(){
   if(!confirm("Sign out of Life Hub?")) return;
   try{
@@ -764,6 +855,8 @@ function bindDynamic(){
   $("#newJournalBtn")?.addEventListener("click",()=>openEntryForm("journal"));
   $("#newSubscriptionBtn")?.addEventListener("click",()=>openEntryForm("subscription"));
   $("#newAssetBtn")?.addEventListener("click",()=>openEntryForm("asset"));
+  $("#newReminderBtn")?.addEventListener("click",()=>openEntryForm("reminder"));
+  $("#notifyBtn")?.addEventListener("click",requestNotifications);
   $("#editLifePlanBtn")?.addEventListener("click",()=>openEntryForm("lifePlan"));
   $("#addExpense")?.addEventListener("click",()=>openEntryForm("expense"));
   $("#addIncome")?.addEventListener("click",()=>openEntryForm("income"));
@@ -814,6 +907,7 @@ function bindDynamic(){
       toast("Backup exported");
     }catch(error){ toast(fireError(error)); }
   });
+  $("#settingsResetPassword")?.addEventListener("click",resetPasswordFromSettings);
   $("#signOutRow")?.addEventListener("click",signOutAndLeave);
   $("#resetRow")?.addEventListener("click",resetAll);
 }

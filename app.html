@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#071b13">
+  <meta name="description" content="Life Hub — a private personal life operating system.">
+  <title>Life Hub</title>
+  <script type="module" src="auth-gate.js?v=27"></script>
+  <link rel="stylesheet" href="style.css">
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Life Hub">
+</head>
+<body>
+  <div class="app-shell">
+    <div class="bg-image"></div>
+    <div class="bg-vignette"></div>
+    <div class="ambient ambient-1"></div>
+    <div class="ambient ambient-2"></div>
+
+    <header class="topbar glass">
+      <button class="icon-btn" id="menuBtn" aria-label="Open menu"><span>☰</span></button>
+      <div class="brand">
+        <span class="brand-mark">✦</span>
+        <span>Life Hub</span>
+      </div>
+      <div class="top-actions">
+        <button class="icon-btn" id="searchBtn" aria-label="Search">⌕</button>
+        <button class="avatar" id="profileBtn" aria-label="Profile">A</button>
+      </div>
+    </header>
+
+    <main class="main" id="main">
+      <section class="hero">
+        <div class="eyebrow" id="greeting">GOOD MORNING</div>
+        <h1>Arish<span class="leaf"> ❧</span></h1>
+        <p>Your life, in one calm place.</p>
+        <div class="quote glass">
+          <span class="quote-leaf">❧</span>
+          <div><b id="dailyQuote">Small systems create a bigger life.</b><small>One place for everything that matters.</small></div>
+          <span class="quote-mark">“</span>
+        </div>
+
+        <div class="attention-card glass" id="attentionCard">
+          <div class="attention-icon">!</div>
+          <div class="attention-copy">
+            <span class="section-kicker">NEEDS YOUR ATTENTION</span>
+            <b id="attentionTitle">3 things worth checking today</b>
+            <small id="attentionText">Your Life Hub will surface overdue tasks, upcoming dates and money items here.</small>
+          </div>
+          <button class="attention-action" id="attentionBtn">Review →</button>
+        </div>
+        <div class="today-focus glass">
+          <div class="today-focus-head">
+            <div><span class="section-kicker">RIGHT NOW</span><h2>Today</h2></div>
+            <button class="text-btn" data-page="calendar">Open plan →</button>
+          </div>
+          <div class="focus-items" id="todayFocusItems">
+            <div class="empty"><strong>No plans yet</strong><span>Your day will appear here as you add tasks and events.</span></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-heading">
+          <div>
+            <span class="section-kicker">YOUR LIFE</span>
+            <h2>Overview</h2>
+          </div>
+          <button class="text-btn" data-page="insights">See insights →</button>
+        </div>
+        <div class="overview-grid">
+          <button class="stat-card glass" data-page="finances">
+            <span class="stat-icon money">₹</span>
+            <strong id="balance">₹0</strong>
+            <small>Total balance</small>
+          </button>
+          <button class="stat-card glass" data-page="goals">
+            <span class="stat-icon goal">◎</span>
+            <strong id="goalCount">0</strong>
+            <small>Active goals</small>
+          </button>
+          <button class="stat-card glass" data-page="wishlist">
+            <span class="stat-icon wish">♥</span>
+            <strong id="wishCount">0</strong>
+            <small>Wishlist items</small>
+          </button>
+          <button class="stat-card glass" data-page="family">
+            <span class="stat-icon family">♧</span>
+            <strong id="familyCount">0</strong>
+            <small>People close to you</small>
+          </button>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-heading">
+          <div>
+            <span class="section-kicker">ONE TAP AWAY</span>
+            <h2>Quick access</h2>
+          </div>
+          <button class="icon-btn mini" id="customizeBtn" aria-label="Customize">⋮</button>
+        </div>
+        <div class="module-grid core-modules">
+          <button class="module-card glass" data-page="finances">
+            <span class="module-icon green">▱</span><span><b>Finances</b><small>Money & budgets</small></span>
+          </button>
+          <button class="module-card glass" data-page="goals">
+            <span class="module-icon teal">◎</span><span><b>Goals</b><small>Build your future</small></span>
+          </button>
+          <button class="module-card glass" data-page="wishlist">
+            <span class="module-icon pink">♡</span><span><b>Wishlist</b><small>Things worth having</small></span>
+          </button>
+          <button class="module-card glass" data-page="family">
+            <span class="module-icon gold">♧</span><span><b>People</b><small>Family & relationships</small></span>
+          </button>
+          <button class="module-card glass" data-page="journal">
+            <span class="module-icon purple">◫</span><span><b>Journal</b><small>Thoughts & memories</small></span>
+          </button>
+          <button class="module-card glass" data-page="notes">
+            <span class="module-icon amber">≡</span><span><b>Notes</b><small>Ideas & capture</small></span>
+          </button>
+          <button class="module-card glass" data-page="habits">
+            <span class="module-icon violet">◌</span><span><b>Habits</b><small>Daily systems</small></span>
+          </button>
+          <button class="module-card glass" data-page="calendar">
+            <span class="module-icon blue">▣</span><span><b>Plan</b><small>Time & commitments</small></span>
+          </button>
+        </div>
+        <button class="more-areas glass" id="moreAreasBtn">
+          <span><b>More life areas</b><small>Vault · Documents · Wellbeing · Assets · Life Plan</small></span>
+          <strong>→</strong>
+        </button>
+      </section>
+
+      <section class="section">
+        <div class="section-heading">
+          <div><span class="section-kicker">DON'T LOSE TRACK</span><h2>Coming up</h2></div>
+        </div>
+        <div class="upcoming-row" id="upcomingItems">
+          <div class="empty"><strong>Nothing upcoming</strong><span>Add an event or reminder when something matters.</span></div>
+        </div>
+      </section>
+
+      <section class="section life-pulse">
+        <div class="section-heading"><div><span class="section-kicker">THE BIG PICTURE</span><h2>Life pulse</h2></div></div>
+        <div class="pulse-card glass">
+          <div class="pulse-head"><span>How is life moving?</span><b id="pulseScore">0%</b></div>
+          <div class="progress"><span id="pulseBar" style="width:0%"></span></div>
+          <div class="pulse-items">
+            <span>Money <b id="pulseMoney">0</b></span>
+            <span>Goals <b id="pulseGoals">0</b></span>
+            <span>Habits <b id="pulseHabits">0</b></span>
+            <span>People <b id="pulsePeople">0</b></span>
+          </div>
+        </div>
+      </section>
+
+      <section class="section connected-section">
+        <div class="section-heading">
+          <div><span class="section-kicker">CONNECTED LIFE</span><h2>One thing → another</h2></div>
+        </div>
+        <div class="connection-card glass">
+          <div class="connection-chain">
+            <span>♡ Wishlist</span><i>→</i><span>₹ Savings goal</span><i>→</i><span>✓ Tasks</span><i>→</i><span>📅 Plan</span>
+          </div>
+          <p>Life Hub connects your information so a decision in one area can make the next action obvious.</p>
+        </div>
+      </section>
+      <div class="bottom-space"></div>
+    </main>
+
+    <button class="fab" id="fab" aria-label="Quick add">+</button>
+
+    <nav class="bottom-nav glass">
+      <button class="nav-item active" data-page="home"><span>⌂</span><small>Home</small></button>
+      <button class="nav-item" data-page="calendar"><span>▣</span><small>Plan</small></button>
+      <button class="nav-item" data-page="finances"><span>₹</span><small>Money</small></button>
+      <button class="nav-item" data-page="goals"><span>◎</span><small>Goals</small></button>
+      <button class="nav-item" id="moreNav"><span>•••</span><small>More</small></button>
+    </nav>
+  </div>
+
+
+  <section class="search-overlay" id="searchOverlay" aria-hidden="true">
+    <div class="search-box">
+      <button class="icon-btn" id="closeSearch">←</button>
+      <input id="globalSearch" type="search" placeholder="Search your life…" autocomplete="off">
+    </div>
+    <div class="search-hint">Search across money, goals, notes, people, tasks and more.</div>
+    <div class="search-results" id="searchResults"></div>
+  </section>
+
+  <aside class="drawer" id="drawer">
+    <div class="drawer-backdrop" id="drawerBackdrop"></div>
+    <div class="drawer-panel">
+      <div class="drawer-head">
+        <div><span class="eyebrow">YOUR LIFE OS</span><h2>Life Hub</h2></div>
+        <button class="icon-btn" id="closeDrawer">×</button>
+      </div>
+      <div class="profile-mini glass"><div class="avatar big">A</div><div><b>Arish</b><small>Personal space · Private</small></div><span class="online-dot"></span></div>
+
+      <div class="drawer-section"><span class="drawer-label">CORE</span>
+        <button class="drawer-link" data-page="home">⌂ <span>Home</span></button>
+        <button class="drawer-link" data-page="calendar">▣ <span>Calendar & planning</span></button>
+        <button class="drawer-link" data-page="tasks">✓ <span>Tasks & inbox</span></button>
+        <button class="drawer-link" data-page="notes">≡ <span>Notes & capture</span></button>
+      </div>
+      <div class="drawer-section"><span class="drawer-label">LIFE</span>
+        <button class="drawer-link" data-page="finances">₹ <span>Finances</span></button>
+        <button class="drawer-link" data-page="goals">◎ <span>Goals & projects</span></button>
+        <button class="drawer-link" data-page="habits">◌ <span>Habits & routines</span></button>
+        <button class="drawer-link" data-page="health">♡ <span>Wellbeing</span></button>
+        <button class="drawer-link" data-page="family">♧ <span>People & family</span></button>
+        <button class="drawer-link" data-page="wishlist">♡ <span>Wishlist</span></button>
+      </div>
+      <div class="drawer-section"><span class="drawer-label">MEMORY & ASSETS</span>
+        <button class="drawer-link" data-page="journal">◫ <span>Journal & memories</span></button>
+        <button class="drawer-link" data-page="documents">□ <span>Documents</span></button>
+        <button class="drawer-link" data-page="vault">▰ <span>Private vault</span></button>
+        <button class="drawer-link" data-page="assets">◇ <span>Assets & subscriptions</span></button>
+        <button class="drawer-link" data-page="life-plan">✦ <span>Life plan</span></button>
+      </div>
+      <div class="drawer-footer">
+        <button class="drawer-link" data-page="reminders">⏰ <span>Reminders</span></button>
+        <button class="drawer-link" data-page="life-review">◔ <span>Life review</span></button>
+        <button class="drawer-link" data-page="routines">↻ <span>Routines</span></button>
+        <button class="drawer-link" data-page="money-plan">₹ <span>Money plan</span></button>
+        <button class="drawer-link" data-page="relationships">⌘ <span>Relationships</span></button>
+        <button class="drawer-link" data-page="settings">⚙ <span>Settings</span></button>
+        <button class="drawer-link danger-link" id="drawerResetBtn">↺ <span>Reset all Life Hub data</span></button>
+      </div>
+    </div>
+  </aside>
+
+  <section class="page-layer" id="pageLayer" aria-hidden="true">
+    <div class="page-panel">
+      <header class="page-header">
+        <button class="icon-btn" id="backBtn">←</button>
+        <div><span class="eyebrow" id="pageKicker">MODULE</span><h2 id="pageTitle">Finances</h2></div>
+        <button class="icon-btn" id="pageAction">＋</button>
+      </header>
+      <div id="pageContent" class="page-content"></div>
+    </div>
+  </section>
+
+  <div class="modal" id="modal" aria-hidden="true">
+    <div class="modal-backdrop" data-close-modal></div>
+    <div class="modal-card glass">
+      <button class="modal-close" data-close-modal>×</button>
+      <span class="eyebrow" id="modalKicker">QUICK CAPTURE</span>
+      <h2 id="modalTitle">What do you want to add?</h2>
+      <div id="modalBody"></div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <script type="module" src="data.js?v=36"></script>
+  <script type="module" src="script.js?v=36"></script>
+</body>
+</html>

@@ -348,3 +348,97 @@ Firebase's current web authentication docs support email/password auth, Google s
 - Password reset remains available.
 - Added a prominent dedicated Sign out action in Settings.
 - Sign out returns to login.html and clears the local session gate.
+
+
+## V26 — Production entry point
+- `https://krymorsk.github.io/Life-Hub/` now redirects to `login.html`.
+- The authenticated application lives at `app.html`.
+- Login now redirects to `app.html` after successful Email/Password authentication.
+- The auth gate protects `app.html` rather than the root `index.html`.
+- Service-worker cache includes both the public entry point and the authenticated app.
+
+
+## V27 — Production auth hardening
+- `app.html` now verifies the real Firebase Auth session before rendering the app; localStorage is no longer the security gate.
+- The app stays visually hidden during the short authentication check to prevent a protected-screen flash.
+- Settings now includes a Firebase password-reset action for the signed-in email.
+- Login/session routing was updated for the real auth gate.
+- Service-worker cache was bumped.
+
+
+# V28–V36 Master Plan Implementation
+
+## V28 — Today Command Center
+- Prioritized overdue/due-today/upcoming items.
+- Today summary counters.
+- Goal deadline awareness.
+- Attention queue upgraded from static counts to priority-ranked records.
+
+## V29 — Relationship Explorer
+- New Relationships module.
+- Relationship counts for goals/projects/tasks/events/people/money/wishlist/notes.
+- Clickable entity nodes route into their modules.
+
+## V30 — Money 2.0
+- Accounts collection.
+- Budgets collection.
+- Money plan module.
+- Recurring subscription visibility.
+- Data model ready for account/transaction linking.
+
+## V31 — People + Memory
+- People records remain connected to events.
+- Birthday-aware attention.
+- Notes/journal remain first-class searchable records.
+
+## V32 — Routines + Recurring Life
+- Routines collection.
+- Routine create/pause/delete.
+- Existing reminder recurrence values support one-time/daily/weekly/monthly patterns.
+- Recurrence helper for daily/weekly/monthly/yearly next-run calculation.
+
+## V33 — Notifications
+- Browser notifications remain available.
+- Attention engine produces high-priority local notifications while the app is active.
+- Architecture is ready for FCM, but server-side message sending still requires a secure sender path/VAPID configuration.
+
+## V34 — PWA + Offline
+- Firestore persistent local cache enabled with fallback to standard Firestore.
+- PWA manifest updated.
+- Maskable SVG app icons added.
+- App scope/start URL defined for `/Life-Hub/`.
+
+## V35 — Security + Backup
+- Firestore rules now require ownership of user-scoped records.
+- All client-created records stamp `ownerId` from the authenticated Firebase UID.
+- Export remains available.
+- Restore helper added.
+- Account/data deletion helper added.
+
+## V36 — Life Intelligence
+- Today and Attention combine tasks, events, goal deadlines, birthdays and renewals.
+- Life Review module summarizes real progress.
+- Money Plan module begins affordability/context foundation.
+- Relationship Explorer exposes connections.
+- Routines connect recurring life systems back into the Life OS.
+
+### Important production note
+FCM web push requires HTTPS and a service worker; Firebase's current docs also note that modular Firebase imports in service workers require bundling or an alternative service-worker setup. The current V36 build intentionally keeps background FCM sending as the next backend deployment task rather than pretending client-only code can safely send its own push messages. citeturn950947search2turn950947search4
+
+Firestore transactions/batched writes are used for the architecture where multiple related records must change atomically; Firestore documents those operations as atomic. citeturn950947search0
+
+
+## V36 master build correction
+The V36 controller now contains the intended Today/Attention, Relationships, Money Plan, Routines and Life Review implementations; the file was re-written and re-audited after generation.
+
+
+## V36 auth/reminder correction
+- Re-added Google sign-in because Google Authentication is now enabled in Firebase.
+- Kept Email/Password as the primary authentication flow.
+- Restored the missing Reminders module UI/form/bindings found during the V36 quick check.
+
+
+## Final V36 fix
+- Google sign-in button is present again on login and wired to Firebase GoogleAuthProvider.
+- Email/password remains enabled.
+- Reminders module form and save path are present.

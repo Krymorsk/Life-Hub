@@ -6,7 +6,10 @@ import {
   onAuthStateChanged,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
-  sendPasswordResetEmail
+  sendPasswordResetEmail,
+  GoogleAuthProvider,
+  signInWithPopup,
+  signInWithRedirect
 } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js";
 
 const firebaseConfig = {
@@ -56,7 +59,7 @@ function setSession(user){
   localStorage.setItem("lifehub_auth_completed","1");
   localStorage.setItem("lifehub_auth_provider",
     user?.isAnonymous ? "anonymous" : (user?.providerData?.[0]?.providerId || "account"));
-  location.replace("index.html");
+  location.replace("app.html");
 }
 
 function setMode(next){
@@ -119,26 +122,47 @@ async function createEmail(){
 
 
 
+
+async function googleAuth(){
+  setStatus("Opening Google…","success");
+  const provider=new GoogleAuthProvider();
+  provider.setCustomParameters({prompt:"select_account"});
+  try{
+    const result=await signInWithPopup(auth,provider);
+    setStatus("Signed in. Opening Life Hub…","success");
+    setSession(result.user);
+  }catch(error){
+    if(error?.code==="auth/popup-blocked"){
+      try{ await signInWithRedirect(auth,provider); return; }
+      catch(redirectError){ setStatus(firebaseMessage(redirectError)); return; }
+    }
+    setStatus(firebaseMessage(error));
+  }
+}
+
+async function forgot(){
+  const email=$("#email").value.trim();
+  if(!email){ setStatus("Enter your email first."); return; }
+  try{
+    await sendPasswordResetEmail(auth,email);
+    setStatus("Password reset email sent.","success");
+  }catch(error){ setStatus(firebaseMessage(error)); }
+}
+
 $("#signInMode").onclick=()=>setMode("signin");
 $("#createMode").onclick=()=>setMode("create");
 $("#authForm").onsubmit=e=>{
   e.preventDefault();
   mode==="create"?createEmail():signInEmail();
 };
-$("#googleBtn").onclick=googleAuth;
-$("#guestBtn").onclick=guest;
-$("#forgotBtn").onclick=forgot;
-
-// If Google redirect returned, process it before normal routing.
-getRedirectResult(auth).then(result=>{
-  if(result?.user) setSession(result.user);
-}).catch(error=>{
-  if(error?.code) setStatus(firebaseMessage(error));
-});
+$("#googleBtn")?.addEventListener("click",googleAuth);
+$("#forgotBtn")?.addEventListener("click",forgot);
 
 setMode("signin");
 
-const currentUser = auth.currentUser;
-if(currentUser && !currentUser.isAnonymous){
-  setSession(currentUser);
-}
+onAuthStateChanged(auth,user=>{
+  if(user && !user.isAnonymous && !redirectBusy && location.pathname.endsWith("/login.html")){
+    redirectBusy=true;
+    setSession(user);
+  }
+});
