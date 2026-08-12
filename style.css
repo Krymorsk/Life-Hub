@@ -160,3 +160,6 @@ linear-gradient(180deg,rgba(4,21,14,.96),rgba(2,15,10,.98));}.page-header{positi
 
 .attention-hot{border-color:rgba(232,198,108,.28);box-shadow:0 18px 60px rgba(0,0,0,.34),0 0 30px rgba(232,198,108,.05)}
 .account-sheet{display:grid;gap:12px}.account-status{padding:14px;border-radius:14px}.account-status b{display:block}.account-status small{display:block;color:var(--muted);margin-top:4px}.account-choice{display:grid;gap:10px}.account-divider{text-align:center;color:var(--muted);font-size:10px}.full-btn{width:100%}
+
+.settings-action-row{display:flex;align-items:center;justify-content:space-between;width:100%;border:1px solid var(--line);padding:14px 15px;border-radius:15px;background:linear-gradient(145deg,rgba(16,48,34,.68),rgba(3,22,15,.58));cursor:pointer;text-align:left}
+.settings-action-row:hover{border-color:rgba(143,240,124,.25);background:rgba(143,240,124,.06)}

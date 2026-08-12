@@ -4,16 +4,9 @@ import {
 import {
   getAuth,
   onAuthStateChanged,
-  signInAnonymously,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
-  sendPasswordResetEmail,
-  GoogleAuthProvider,
-  signInWithPopup,
-  signInWithRedirect,
-  getRedirectResult,
-  linkWithCredential,
-  linkWithPopup
+  sendPasswordResetEmail
 } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js";
 
 const firebaseConfig = {
@@ -32,7 +25,6 @@ const auth = getAuth(app);
 const $ = s => document.querySelector(s);
 
 let mode = "signin";
-let anonymousUser = null;
 let redirectBusy = false;
 
 function setStatus(message, kind="error"){
@@ -124,54 +116,8 @@ async function createEmail(){
   }
 }
 
-async function googleAuth(){
-  setStatus("Opening Google…","success");
-  const provider=new GoogleAuthProvider();
-  provider.setCustomParameters({prompt:"select_account"});
-  try{
-    if(anonymousUser && anonymousUser.isAnonymous){
-      const result=await linkWithPopup(anonymousUser,provider);
-      setStatus("Your guest Life Hub is now secured.","success");
-      setSession(result.user);
-      return;
-    }
-    const result=await signInWithPopup(auth,provider);
-    setSession(result.user);
-  }catch(error){
-    // Mobile browsers can be better served by redirect.
-    if(error?.code==="auth/popup-blocked"){
-      try{
-        await signInWithRedirect(auth,provider);
-        return;
-      }catch(redirectError){
-        setStatus(firebaseMessage(redirectError));
-        return;
-      }
-    }
-    setStatus(firebaseMessage(error));
-  }
-}
 
-async function guest(){
-  setStatus("Starting a guest Life Hub…","success");
-  try{
-    const result=await signInAnonymously(auth);
-    setSession(result.user);
-  }catch(error){
-    setStatus(firebaseMessage(error));
-  }
-}
 
-async function forgot(){
-  const email=$("#email").value.trim();
-  if(!email){ setStatus("Enter your email first."); return; }
-  try{
-    await sendPasswordResetEmail(auth,email);
-    setStatus("Password reset email sent.","success");
-  }catch(error){
-    setStatus(firebaseMessage(error));
-  }
-}
 
 $("#signInMode").onclick=()=>setMode("signin");
 $("#createMode").onclick=()=>setMode("create");
@@ -190,15 +136,9 @@ getRedirectResult(auth).then(result=>{
   if(error?.code) setStatus(firebaseMessage(error));
 });
 
-onAuthStateChanged(auth,user=>{
-  anonymousUser=user?.isAnonymous?user:null;
-  const completed=localStorage.getItem("lifehub_auth_completed")==="1";
-  // Don't redirect automatically for an anonymous user: show the login page
-  // so they can explicitly secure or continue as guest.
-  if(user && !user.isAnonymous && completed && !redirectBusy){
-    redirectBusy=true;
-    setSession(user);
-  }
-});
-
 setMode("signin");
+
+const currentUser = auth.currentUser;
+if(currentUser && !currentUser.isAnonymous){
+  setSession(currentUser);
+}

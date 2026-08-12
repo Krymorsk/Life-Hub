@@ -341,3 +341,10 @@ Firebase's current docs recommend linking multiple auth providers to the current
 - Login page uses the same Life Hub forest visual identity.
 
 Firebase's current web authentication docs support email/password auth, Google sign-in, anonymous auth, and linking credentials to an existing account; linking is the correct approach for converting a guest/anonymous account without abandoning the existing user's data. citeturn130575search0turn130575search1turn130575search2turn130575search3
+
+
+## V25 — Email/password-only auth
+- Removed Google and guest controls from the login UI because only Email/Password is enabled.
+- Password reset remains available.
+- Added a prominent dedicated Sign out action in Settings.
+- Sign out returns to login.html and clears the local session gate.

@@ -423,6 +423,10 @@ function renderSettings(){
       <div class="list-row glass"><div class="main-copy"><b>Local development</b><small>Add <b>127.0.0.1</b> and <b>localhost</b> under Firebase → Authentication → Settings → Authorized domains for OAuth-ready local testing.</small></div><span class="value">Dev</span></div>
       <div class="list-row glass"><div class="main-copy"><b>Data model</b><small>Versioned entities and relationships.</small></div><span class="value positive">V4</span></div>
       <div class="list-row glass" id="exportRow"><div class="main-copy"><b>Export data</b><small>Download the complete Firestore snapshot as JSON.</small></div><span class="value">→</span></div>
+<button class="settings-action-row glass" id="signOutRow" type="button">
+        <div class="main-copy"><b>Sign out</b><small>Return to the Life Hub login page.</small></div>
+        <span class="value">Sign out →</span>
+      </button>
       <div class="list-row glass danger-row" id="resetRow"><div class="main-copy"><b>Reset all Life Hub data</b><small>Delete this user's local Firestore records.</small></div><span class="value negative">Reset</span></div>
     </div>`;
 }
@@ -705,6 +709,19 @@ function refreshCurrentView(){
   }
 }
 
+
+async function signOutAndLeave(){
+  if(!confirm("Sign out of Life Hub?")) return;
+  try{
+    await LifeFirebase.disconnectSession();
+    localStorage.removeItem("lifehub_auth_completed");
+    localStorage.removeItem("lifehub_auth_provider");
+    location.replace("login.html");
+  }catch(error){
+    toast(fireError(error));
+  }
+}
+
 async function resetAll(){
   if(!confirm("Reset ALL Life Hub data in this browser/account? This cannot be undone.")) return;
   try{
@@ -797,6 +814,7 @@ function bindDynamic(){
       toast("Backup exported");
     }catch(error){ toast(fireError(error)); }
   });
+  $("#signOutRow")?.addEventListener("click",signOutAndLeave);
   $("#resetRow")?.addEventListener("click",resetAll);
 }
 
