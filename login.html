@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#071b13">
+  <meta name="description" content="Life Hub — secure access to your personal life operating system.">
+  <title>Sign in · Life Hub</title>
+  <link rel="stylesheet" href="login.css">
+  <link rel="manifest" href="manifest.webmanifest">
+</head>
+<body>
+  <div class="login-shell">
+    <div class="login-bg"></div>
+    <div class="login-vignette"></div>
+
+    <main class="login-card">
+      <div class="brand-mark">✦</div>
+      <div class="brand-name">Life Hub</div>
+      <p class="eyebrow">YOUR LIFE, IN ONE CALM PLACE</p>
+      <h1 id="loginTitle">Welcome back.</h1>
+      <p class="lead" id="loginLead">Sign in to keep your Life Hub synced across your devices.</p>
+
+      <div class="mode-switch">
+        <button id="signInMode" class="mode-btn active">Sign in</button>
+        <button id="createMode" class="mode-btn">Create account</button>
+      </div>
+
+      <form id="authForm" novalidate>
+        <label>
+          <span>Email</span>
+          <input id="email" type="email" autocomplete="email" placeholder="you@example.com" required>
+        </label>
+
+        <label>
+          <span>Password</span>
+          <input id="password" type="password" autocomplete="current-password" placeholder="At least 6 characters" required>
+        </label>
+
+        <button id="emailSubmit" class="primary-btn" type="submit">Sign in with email</button>
+      </form>
+
+      <button id="googleBtn" class="google-btn" type="button">
+        <span class="google-icon">G</span>
+        <span id="googleLabel">Continue with Google</span>
+      </button>
+
+      <button id="guestBtn" class="guest-btn" type="button">Continue as guest</button>
+
+      <button id="forgotBtn" class="forgot-btn" type="button">Forgot password?</button>
+
+      <div class="divider"><span>PRIVATE BY DESIGN</span></div>
+      <p class="privacy-note">
+        Your Life Hub data is stored under your Firebase account and protected by Firestore rules.
+        Guest mode uses a Firebase anonymous account until you secure it with a permanent sign-in method.
+      </p>
+
+      <div id="status" class="status" role="status" aria-live="polite"></div>
+    </main>
+
+    <footer class="login-footer">
+      <span>Life Hub</span>
+      <span>•</span>
+      <span>Personal Life OS</span>
+    </footer>
+  </div>
+
+  <script type="module" src="login.js?v=24"></script>
+</body>
+</html>

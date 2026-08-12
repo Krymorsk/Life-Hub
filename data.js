@@ -1,5 +1,9 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-app.js";
-import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js";
+import {
+  getAuth, signInAnonymously, onAuthStateChanged,
+  GoogleAuthProvider, linkWithPopup, linkWithRedirect,
+  EmailAuthProvider, linkWithCredential, signOut
+} from "https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js";
 import {
   getFirestore,
   collection,
@@ -11,7 +15,8 @@ import {
   writeBatch,
   query,
   orderBy,
-  serverTimestamp
+  serverTimestamp,
+  onSnapshot
 } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -48,8 +53,33 @@ function firebaseError(error) {
   return error?.message || "Firebase request failed.";
 }
 
+const liveListeners = new Map();
+
+function subscribe(store, handler){
+  const key = store;
+  liveListeners.get(key)?.();
+  const userPromise = ensureAuth();
+  let unsubscribe = () => {};
+  userPromise.then(user => {
+    const ref = collection(db, "users", user.uid, store);
+    unsubscribe = onSnapshot(ref, snap => {
+      handler(snap.docs.map(d => ({ id:d.id, ...d.data() })));
+    }, error => {
+      console.error(`Realtime ${store} listener failed`, error);
+      handler([], error);
+    });
+    liveListeners.set(key, () => unsubscribe());
+  }).catch(error => handler([], error));
+  return () => unsubscribe();
+}
+
+function unsubscribeAll(){
+  for (const stop of liveListeners.values()) stop();
+  liveListeners.clear();
+}
+
 const SCHEMA = {
-  version: 4,
+  version: 5,
   backend: "firebase-firestore",
   entities: STORES,
   relationships: [
@@ -76,12 +106,30 @@ onAuthStateChanged(auth, user => {
   }
 });
 
+function withTimeout(promise, ms, message) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error(message)), ms))
+  ]);
+}
+
 async function ensureAuth() {
-  await authReady;
+  try {
+    await withTimeout(authReady, 8000, "Firebase Auth initialization timed out.");
+  } catch (error) {
+    throw Object.assign(new Error(
+      "Firebase Auth did not initialize. Check network access and Firebase Authentication."
+    ), { code: "auth/initialization-timeout", cause: error });
+  }
+
   if (currentUser) return currentUser;
 
   try {
-    const credential = await signInAnonymously(auth);
+    const credential = await withTimeout(
+      signInAnonymously(auth),
+      10000,
+      "Anonymous sign-in timed out."
+    );
     currentUser = credential.user;
     return currentUser;
   } catch (error) {
@@ -94,13 +142,61 @@ async function ensureAuth() {
       message = "Firebase API key/config is invalid.";
     } else if (code === "auth/network-request-failed") {
       message = "Firebase authentication could not reach the network.";
+    } else if (code === "auth/initialization-timeout") {
+      message = "Firebase Auth initialization timed out.";
+    } else if (code === "deadline-exceeded") {
+      message = "Firebase Auth request timed out.";
     }
-    throw Object.assign(new Error(message), { code });
+    throw Object.assign(new Error(message), { code, cause: error });
   }
+}
+
+
+async function linkGoogle({ redirect = false } = {}) {
+  const user = await ensureAuth();
+  const provider = new GoogleAuthProvider();
+  provider.setCustomParameters({ prompt: "select_account" });
+  if (redirect) {
+    await linkWithRedirect(user, provider);
+    return { redirected: true };
+  }
+  const result = await linkWithPopup(user, provider);
+  currentUser = result.user;
+  return result.user;
+}
+
+async function linkEmailPassword(email, password) {
+  const user = await ensureAuth();
+  const credential = EmailAuthProvider.credential(email.trim(), password);
+  const result = await linkWithCredential(user, credential);
+  currentUser = result.user;
+  return result.user;
+}
+
+async function disconnectSession() {
+  await signOut(auth);
+  currentUser = null;
+}
+
+function authProviders() {
+  return currentUser?.providerData?.map(p => p.providerId) || [];
+}
+
+
+function addInterval(dateInput, frequency, interval=1) {
+  const d = new Date(dateInput);
+  if (Number.isNaN(d.getTime())) return null;
+  if (frequency === "daily") d.setDate(d.getDate()+interval);
+  else if (frequency === "weekly") d.setDate(d.getDate()+7*interval);
+  else if (frequency === "monthly") d.setMonth(d.getMonth()+interval);
+  else if (frequency === "yearly") d.setFullYear(d.getFullYear()+interval);
+  else return d.toISOString();
+  return d.toISOString();
 }
 
 async function currentCollection(store) {
   const user = await ensureAuth();
+  if (!user?.uid) throw Object.assign(new Error("Firebase user identity is missing."), {code:"auth/missing-user"});
   return collection(db, "users", user.uid, store);
 }
 
@@ -281,11 +377,17 @@ async function initialize() {
   return loadState();
 }
 
-export const LifeFirebase = { app, auth, db, firebaseError, getUser: () => currentUser };
+export const LifeFirebase = {
+  app, auth, db, firebaseError,
+  getUser: () => currentUser,
+  linkGoogle, linkEmailPassword, disconnectSession, authProviders,
+  addInterval
+};
 export const LifeDB = {
   schema: SCHEMA,
   initialize, loadState, persistState, create, get, remove,
   linksFor, getAllProjects, getUserProfile, saveUserProfile,
-  deleteStoreRecord, getRelationshipsFor, link, exportAll, reset, search, all
+  deleteStoreRecord, getRelationshipsFor, link, exportAll, reset, search, all,
+  subscribe, unsubscribeAll
 };
 

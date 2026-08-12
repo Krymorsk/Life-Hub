@@ -1,0 +1,55 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap');
+
+:root{
+  --bg:#04130d;
+  --card:rgba(6,27,18,.80);
+  --line:rgba(177,255,206,.16);
+  --text:#f1f7f1;
+  --muted:#a7b8ad;
+  --green:#8ff07c;
+  --green2:#5bdc73;
+  --danger:#ff7794;
+}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;background:var(--bg)}
+body{color:var(--text);font-family:'DM Sans',system-ui,sans-serif}
+button,input{font:inherit}
+button{color:inherit}
+.login-shell{position:relative;min-height:100vh;display:grid;place-items:center;padding:24px 16px;overflow:hidden}
+.login-bg{position:fixed;inset:0;background:url("background.jpg") center/cover no-repeat;filter:saturate(1.02);z-index:0}
+.login-vignette{position:fixed;inset:0;background:
+  linear-gradient(180deg,rgba(2,14,9,.44),rgba(2,13,9,.22) 42%,rgba(2,13,9,.78)),
+  radial-gradient(circle at center,rgba(18,70,39,.12),rgba(1,12,8,.46) 80%);z-index:1}
+.login-card{position:relative;z-index:2;width:min(100%,430px);padding:34px 28px 28px;border-radius:28px;border:1px solid var(--line);background:linear-gradient(150deg,rgba(13,48,31,.84),rgba(3,22,15,.82));backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px);box-shadow:0 28px 100px rgba(0,0,0,.45)}
+.brand-mark{color:var(--green);font-size:28px;margin-bottom:3px}
+.brand-name{font-weight:700;font-size:20px}
+.eyebrow{margin:20px 0 8px;color:var(--green);font-size:10px;font-weight:700;letter-spacing:2px}
+h1{font:700 38px/1.04 'Playfair Display',serif;margin:0 0 10px}
+.lead{margin:0;color:var(--muted);font-size:13px;line-height:1.55}
+.mode-switch{display:flex;gap:5px;padding:4px;border:1px solid var(--line);border-radius:13px;background:rgba(255,255,255,.035);margin:24px 0 17px}
+.mode-btn{flex:1;border:0;border-radius:9px;padding:10px 9px;background:transparent;color:var(--muted);cursor:pointer;font-size:12px;font-weight:700}
+.mode-btn.active{background:rgba(143,240,124,.11);color:var(--text)}
+form{display:grid;gap:13px}
+label{display:grid;gap:7px}
+label span{font-size:10px;color:#b7c7bc;letter-spacing:.7px;text-transform:uppercase}
+input{width:100%;border:1px solid var(--line);border-radius:13px;padding:14px 14px;background:rgba(255,255,255,.045);color:var(--text);outline:none}
+input:focus{border-color:rgba(143,240,124,.45);box-shadow:0 0 0 3px rgba(143,240,124,.08)}
+input::placeholder{color:#74877c}
+.primary-btn,.google-btn,.guest-btn,.forgot-btn{width:100%;border-radius:13px;padding:13px 14px;cursor:pointer}
+.primary-btn{margin-top:3px;border:0;background:linear-gradient(135deg,var(--green),var(--green2));color:#071a10;font-weight:800}
+.google-btn{margin-top:10px;border:1px solid var(--line);background:rgba(255,255,255,.055);display:flex;align-items:center;justify-content:center;gap:10px;font-weight:700}
+.google-icon{width:22px;height:22px;display:grid;place-items:center;border-radius:50%;background:#fff;color:#4285f4;font-weight:800;font-size:12px}
+.guest-btn{margin-top:10px;border:1px dashed rgba(143,240,124,.22);background:transparent;color:#c8d8cc}
+.forgot-btn{margin-top:9px;border:0;background:transparent;color:var(--green);font-size:11px}
+.divider{display:flex;align-items:center;gap:10px;margin:22px 0 12px;color:#6f8177;font-size:8px;letter-spacing:1.8px}
+.divider:before,.divider:after{content:"";height:1px;flex:1;background:var(--line)}
+.privacy-note{margin:0;color:#809188;font-size:10px;line-height:1.6;text-align:center}
+.status{min-height:18px;margin-top:13px;border-radius:10px;font-size:11px;line-height:1.45;text-align:center}
+.status.error{padding:9px 10px;background:rgba(255,119,148,.08);color:#ffb4c3;border:1px solid rgba(255,119,148,.18)}
+.status.success{padding:9px 10px;background:rgba(143,240,124,.08);color:#baf4ae;border:1px solid rgba(143,240,124,.18)}
+.login-footer{position:fixed;z-index:3;bottom:12px;left:50%;transform:translateX(-50%);display:flex;gap:7px;color:#9aaca1;font-size:9px;white-space:nowrap}
+@media (max-width:460px){
+  .login-shell{padding:18px 12px 45px;align-items:start;padding-top:9vh}
+  .login-card{padding:28px 20px 22px;border-radius:23px}
+  h1{font-size:34px}
+}

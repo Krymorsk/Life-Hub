@@ -6,6 +6,7 @@
   <meta name="theme-color" content="#071b13">
   <meta name="description" content="Life Hub — a private personal life operating system.">
   <title>Life Hub</title>
+  <script src="auth-gate.js"></script>
   <link rel="stylesheet" href="style.css">
   <link rel="manifest" href="manifest.webmanifest">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -223,6 +224,7 @@
         <button class="drawer-link" data-page="life-plan">✦ <span>Life plan</span></button>
       </div>
       <div class="drawer-footer">
+        <button class="drawer-link" data-page="reminders">⏰ <span>Reminders</span></button>
         <button class="drawer-link" data-page="settings">⚙ <span>Settings</span></button>
         <button class="drawer-link danger-link" id="drawerResetBtn">↺ <span>Reset all Life Hub data</span></button>
       </div>
@@ -251,7 +253,7 @@
   </div>
 
   <div class="toast" id="toast"></div>
-  <script type="module" src="data.js?v=18"></script>
-  <script type="module" src="script.js?v=18"></script>
+  <script type="module" src="data.js?v=24"></script>
+  <script type="module" src="script.js?v=24"></script>
 </body>
 </html>

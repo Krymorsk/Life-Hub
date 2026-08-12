@@ -72,18 +72,37 @@ async function hydrate(){
     state.subscriptions = await LifeDB.all("subscriptions");
     state.assets = await LifeDB.all("assets");
     state.profile = await LifeDB.getUserProfile();
-    if(!state.profile) {
-      state.profile = {
-        displayName:"Arish",
-        createdAt:now()
-      };
+    if(!state.profile){
+      state.profile = {displayName:"Arish",createdAt:now()};
       await LifeDB.saveUserProfile(state.profile);
     }
-    $("#firebaseStatusValue")?.classList.remove("negative");
+    subscribeLiveState();
   }catch(error){
     console.error("Firebase bootstrap failed:",error);
     toast(fireError(error));
   }
+}
+
+function subscribeLiveState(){
+  const map = {
+    people:"people", projects:"projects", goals:"goals", wishes:"wishlist",
+    transactions:"transactions", notes:"notes", journal:"journal",
+    tasks:"tasks", events:"events", habits:"habits",
+    subscriptions:"subscriptions", assets:"assets"
+  };
+  Object.entries(map).forEach(([stateKey,store])=>{
+    LifeDB.subscribe(store,(rows,error)=>{
+      if(error){ console.error(`Live ${store} failed`,error); return; }
+      state[stateKey]=rows;
+      if(store==="transactions"){
+        const income=rows.filter(x=>x.type==="in").reduce((a,x)=>a+Number(x.amount||0),0);
+        const expense=rows.filter(x=>x.type==="out").reduce((a,x)=>a+Math.abs(Number(x.amount||0)),0);
+        state.balance=income-expense;
+      }
+      updateHome();
+      if(currentPage!=="home") refreshCurrentView();
+    });
+  });
 }
 
 function greeting(){
@@ -123,7 +142,7 @@ function renderToday(){
     <button class="focus-item" data-open-record="${esc(x.type)}" data-id="${esc(x.id)}">
       <span>${x.type==="task"?"○":"◷"}</span><b>${esc(x.title)}</b><small>${esc(x.meta)}</small>
     </button>`).join("") :
-    `<div class="empty"><strong>No plans yet</strong><span>Add a task or event and it will appear here.</span></div>`;
+    `<button class="today-empty" id="todayEmptyAdd"><span>＋</span><strong>No plans yet</strong><small>Add a task or event</small></button>`;
 }
 
 function renderUpcoming(){
@@ -234,7 +253,7 @@ function renderGoals(){
     <div class="list-row glass entity-row">
       <div class="main-copy"><span class="tag">${esc(g.area||"GOAL")}</span><b>${esc(g.title)}</b><small>${esc(g.target||"")}</small>
       <div class="progress"><span style="width:${Number(g.progress||0)}%"></span></div></div>
-      <div class="entity-actions"><span class="value positive">${Number(g.progress||0)}%</span><button class="mini-action" data-open-goal="${esc(g.id)}">Open</button></div>
+      <div class="entity-actions"><span class="value positive">${Number(g.progress||0)}%</span><button class="mini-action" data-open-goal="${esc(g.id)}">Open</button><button class="mini-action" data-edit-store="goals" data-edit-id="${esc(g.id)}">Edit</button><button class="mini-action danger-mini" data-delete-store="goals" data-delete-id="${esc(g.id)}" data-delete-label="goal">Delete</button></div>
     </div>`).join("") :
     `<div class="empty glass"><strong>No goals yet</strong><span>Create an outcome, then add projects, tasks and events.</span></div>`;
   return shellIntro("Goals that move your life","Goals are outcomes. Projects are the work. Tasks are the next actions.")
@@ -258,13 +277,13 @@ function renderGoalDetail(id){
     <div class="action-row"><button class="primary" id="addProjectBtn">+ Project</button><button class="secondary" id="addGoalTaskBtn">+ Task</button><button class="secondary" id="addGoalEventBtn">+ Event</button></div>
     <div class="section-mini"><span class="section-kicker">PROJECTS</span><h4>Work inside this goal</h4></div>
     <div class="list">${projects.length?projects.map(p=>`
-      <button class="list-row glass" data-open-project="${esc(p.id)}">
+      <button class="list-row glass project-row" data-open-project="${esc(p.id)}">
         <div class="main-copy"><b>${esc(p.title)}</b><small>${esc(p.description||"")}</small></div><span class="value">${tasks.filter(t=>t.projectId===p.id).length} tasks</span>
       </button>`).join(""):`<div class="empty glass"><strong>No projects yet</strong><span>Add the first project that moves this goal.</span></div>`}</div>
     <div class="section-mini"><span class="section-kicker">NEXT ACTIONS</span><h4>Concrete things to do</h4></div>
     <div class="list">${tasks.length?tasks.map(t=>`
       <div class="list-row glass"><div class="main-copy"><b>${esc(t.title)}</b><small>${esc(t.projectId?"Project action":"Goal action")}</small></div>
-      <button class="check task-toggle ${t.done?"completed":""}" data-task-id="${esc(t.id)}">${t.done?"✓":"○"}</button></div>`).join(""):`<div class="empty glass"><strong>No tasks yet</strong><span>Create the next physical action.</span></div>`}</div>
+      <div class="entity-actions"><button class="check task-toggle ${t.done?"completed":""}" data-task-id="${esc(t.id)}">${t.done?"✓":"○"}</button><button class="mini-action" data-edit-store="tasks" data-edit-id="${esc(t.id)}">Edit</button><button class="mini-action danger-mini" data-delete-store="tasks" data-delete-id="${esc(t.id)}" data-delete-label="task">Delete</button></div></div>`).join(""):`<div class="empty glass"><strong>No tasks yet</strong><span>Create the next physical action.</span></div>`}</div>
     <div class="section-mini"><span class="section-kicker">TIME</span><h4>Events connected to this goal</h4></div>
     <div class="list">${events.length?events.map(e=>`<div class="list-row glass"><div class="main-copy"><b>${esc(e.title)}</b><small>${esc(fmtDate(e.startAt))}</small></div></div>`).join(""):`<div class="empty glass"><strong>No events yet</strong><span>Schedule a deadline, meeting, test or focus block.</span></div>`}</div>`;
 }
@@ -285,7 +304,7 @@ function renderProjectDetail(id){
     </div>
     <div class="action-row"><button class="primary" id="addProjectTaskBtn">+ Task</button><button class="secondary" id="addProjectEventBtn">+ Event</button></div>
     <div class="section-mini"><span class="section-kicker">TASKS</span><h4>Work to complete</h4></div>
-    <div class="list">${tasks.length?tasks.map(t=>`<div class="list-row glass"><div class="main-copy"><b>${esc(t.title)}</b></div><button class="check task-toggle ${t.done?"completed":""}" data-task-id="${esc(t.id)}">${t.done?"✓":"○"}</button></div>`).join(""):`<div class="empty glass"><strong>No tasks yet</strong><span>Add the first concrete action.</span></div>`}</div>
+    <div class="list">${tasks.length?tasks.map(t=>`<div class="list-row glass"><div class="main-copy"><b>${esc(t.title)}</b></div><div class="entity-actions"><button class="check task-toggle ${t.done?"completed":""}" data-task-id="${esc(t.id)}">${t.done?"✓":"○"}</button><button class="mini-action" data-edit-store="tasks" data-edit-id="${esc(t.id)}">Edit</button><button class="mini-action danger-mini" data-delete-store="tasks" data-delete-id="${esc(t.id)}" data-delete-label="task">Delete</button></div></div>`).join(""):`<div class="empty glass"><strong>No tasks yet</strong><span>Add the first concrete action.</span></div>`}</div>
     <div class="section-mini"><span class="section-kicker">EVENTS</span><h4>Time commitments</h4></div>
     <div class="list">${events.length?events.map(e=>`<div class="list-row glass"><div class="main-copy"><b>${esc(e.title)}</b><small>${esc(fmtDate(e.startAt))}</small></div></div>`).join(""):`<div class="empty glass"><strong>No events yet</strong><span>Add a deadline, meeting or focused block.</span></div>`}</div>`;
 }
@@ -293,14 +312,14 @@ function renderProjectDetail(id){
 function renderTasks(){
   const rows=state.tasks.map(t=>`
     <div class="list-row glass"><div class="main-copy"><b>${esc(t.title)}</b><small>${esc(t.goalId?"Goal-linked":t.projectId?"Project-linked":"Standalone")}${t.dueAt?" · "+esc(fmtDate(t.dueAt)):""}</small></div>
-    <button class="check task-toggle ${t.done?"completed":""}" data-task-id="${esc(t.id)}">${t.done?"✓":"○"}</button></div>`).join("");
+    <div class="entity-actions"><button class="check task-toggle ${t.done?"completed":""}" data-task-id="${esc(t.id)}">${t.done?"✓":"○"}</button><button class="mini-action" data-edit-store="tasks" data-edit-id="${esc(t.id)}">Edit</button><button class="mini-action danger-mini" data-delete-store="tasks" data-delete-id="${esc(t.id)}" data-delete-label="task">Delete</button></div></div>`).join("");
   return shellIntro("Tasks that move things forward","Keep actions concrete, and link them when context helps.")
     +`<div class="action-row"><button class="primary" id="newTaskBtn">+ New task</button></div><div class="list">${rows||`<div class="empty glass"><strong>No tasks yet</strong><span>Add one clear next action.</span></div>`}</div>`;
 }
 
 function renderCalendar(){
   const events=state.events.slice().sort((a,b)=>String(a.startAt||"").localeCompare(String(b.startAt||"")));
-  const rows=events.map(e=>`<button class="list-row glass" data-open-record="event" data-id="${esc(e.id)}"><div class="main-copy"><b>${esc(e.title)}</b><small>${esc(fmtDate(e.startAt))}</small></div><span class="value">Open</span></button>`).join("");
+  const rows=events.map(e=>`<div class="list-row glass"><button class="main-copy entity-main-button" data-open-record="event" data-id="${esc(e.id)}"><b>${esc(e.title)}</b><small>${esc(fmtDate(e.startAt))}</small></button><div class="entity-actions"><button class="mini-action" data-edit-store="events" data-edit-id="${esc(e.id)}">Edit</button><button class="mini-action danger-mini" data-delete-store="events" data-delete-id="${esc(e.id)}" data-delete-label="event">Delete</button></div></div>`).join("");
   return shellIntro("Plan the time that makes the rest possible","Events can connect to goals, projects and people.")
     +`<div class="action-row"><button class="primary" id="newEventBtn">+ New event</button></div><div class="list">${rows||`<div class="empty glass"><strong>No events yet</strong><span>Add a commitment, deadline or meaningful date.</span></div>`}</div>`;
 }
@@ -309,7 +328,7 @@ function renderWishlist(){
   const rows=state.wishes.map(w=>`<div class="list-row glass">
     <div class="main-copy"><b>${esc(w.title)}</b><small>${esc(w.priority||"Unprioritized")} · ${w.price?money(w.price):"No price"}</small></div>
     <div class="entity-actions"><span class="value">${w.purchased?"Purchased":w.goalId?"Funded":"Unfunded"}</span>
-      <button class="mini-action" data-fund-wish="${esc(w.id)}">${w.goalId?"Goal":"Fund it"}</button>
+      <button class="mini-action" data-fund-wish="${esc(w.id)}">${w.goalId?"Goal":"Fund it"}</button><button class="mini-action" data-edit-store="wishlist" data-edit-id="${esc(w.id)}">Edit</button><button class="mini-action danger-mini" data-delete-store="wishlist" data-delete-id="${esc(w.id)}" data-delete-label="wishlist item">Delete</button>
       ${!w.purchased?`<button class="mini-action" data-buy-wish="${esc(w.id)}">Purchase</button>`:""}
     </div>
   </div>`).join("");
@@ -322,7 +341,7 @@ function renderFinances(){
   const income=tx.filter(x=>x.type==="in").reduce((a,x)=>a+Number(x.amount||0),0);
   const expense=tx.filter(x=>x.type==="out").reduce((a,x)=>a+Math.abs(Number(x.amount||0)),0);
   const rows=tx.slice().reverse().map(x=>`<div class="list-row glass"><div class="main-copy"><b>${esc(x.title)}</b><small>${esc(x.cat||"General")}${x.relatedWishlistId?" · Wishlist purchase":""}</small></div><span class="value ${x.type==="in"?"positive":"negative"}">${x.type==="in"?"+":"-"}${money(Math.abs(x.amount||0))}</span></div>`).join("");
-  const subscriptions=state.subscriptions.map(s=>`<div class="list-row glass"><div class="main-copy"><b>${esc(s.name||s.title)}</b><small>${esc(s.frequency||"Recurring")} · ${money(s.amount||0)}</small></div><span class="value">Renewal</span></div>`).join("");
+  const subscriptions=state.subscriptions.map(s=>`<div class="list-row glass"><div class="main-copy"><b>${esc(s.name||s.title)}</b><small>${esc(s.frequency||"Recurring")} · ${money(s.amount||0)}</small></div><div class="entity-actions"><span class="value">Renewal</span><button class="mini-action" data-edit-store="subscriptions" data-edit-id="${esc(s.id)}">Edit</button><button class="mini-action danger-mini" data-delete-store="subscriptions" data-delete-id="${esc(s.id)}" data-delete-label="subscription">Delete</button></div></div>`).join("");
   return shellIntro("Money with context","Income, expenses, savings and recurring obligations in one place.")
     +`<div class="data-grid"><div class="data-card glass"><small>BALANCE</small><b>${money(state.balance)}</b></div><div class="data-card glass"><small>INCOME</small><b>${money(income)}</b></div><div class="data-card glass"><small>SPENT</small><b>${money(expense)}</b></div><div class="data-card glass"><small>NET</small><b>${money(income-expense)}</b></div></div>
     <div class="action-row"><button class="primary" id="addExpense">+ Expense</button><button class="secondary" id="addIncome">+ Income</button><button class="secondary" id="newSubscriptionBtn">+ Subscription</button></div>
@@ -333,7 +352,7 @@ function renderFinances(){
 }
 
 function renderFamily(){
-  const rows=state.people.map(p=>`<button class="list-row glass" data-open-person="${esc(p.id)}"><div class="main-copy"><b>${esc(p.name||p.title)}</b><small>${esc(p.relationship||"Person")}</small></div><span class="value">Open</span></button>`).join("");
+  const rows=state.people.map(p=>`<div class="list-row glass"><button class="main-copy entity-main-button" data-open-person="${esc(p.id)}"><b>${esc(p.name||p.title)}</b><small>${esc(p.relationship||"Person")}</small></button><div class="entity-actions"><button class="mini-action" data-edit-store="people" data-edit-id="${esc(p.id)}">Edit</button><button class="mini-action danger-mini" data-delete-store="people" data-delete-id="${esc(p.id)}" data-delete-label="person">Delete</button></div></div>`).join("");
   return shellIntro("People who matter","People are first-class records that can connect to events, notes and follow-ups.")
     +`<div class="action-row"><button class="primary" id="newPersonBtn">+ Add person</button></div><div class="list">${rows||`<div class="empty glass"><strong>No people yet</strong><span>Add someone when you want their information to have a home.</span></div>`}</div>`;
 }
@@ -351,13 +370,13 @@ function renderPersonDetail(id){
 }
 
 function renderNotes(){
-  const rows=state.notes.map(n=>`<div class="list-row glass"><div class="main-copy"><b>${esc(n.title)}</b><small>${esc(n.text||"")}</small></div></div>`).join("");
+  const rows=state.notes.map(n=>`<div class="list-row glass"><div class="main-copy"><b>${esc(n.title)}</b><small>${esc(n.text||"")}</small></div><div class="entity-actions"><button class="mini-action" data-edit-store="notes" data-edit-id="${esc(n.id)}">Edit</button><button class="mini-action danger-mini" data-delete-store="notes" data-delete-id="${esc(n.id)}" data-delete-label="note">Delete</button></div></div>`).join("");
   return shellIntro("Capture once, find forever","Quick notes stay searchable and can later connect to goals or people.")
     +`<div class="action-row"><button class="primary" id="newNoteBtn">+ New note</button></div><div class="list">${rows||`<div class="empty glass"><strong>No notes yet</strong><span>Capture an idea whenever it appears.</span></div>`}</div>`;
 }
 
 function renderJournal(){
-  const rows=state.journal.map(e=>`<div class="list-row glass"><div class="main-copy"><b>${esc(e.title)}</b><small>${esc(e.date||"")}</small><p class="journal-snippet">${esc(e.text||"")}</p></div></div>`).join("");
+  const rows=state.journal.map(e=>`<div class="list-row glass"><div class="main-copy"><b>${esc(e.title)}</b><small>${esc(e.date||"")}</small><p class="journal-snippet">${esc(e.text||"")}</p></div><div class="entity-actions"><button class="mini-action" data-edit-store="journal" data-edit-id="${esc(e.id)}">Edit</button><button class="mini-action danger-mini" data-delete-store="journal" data-delete-id="${esc(e.id)}" data-delete-label="journal entry">Delete</button></div></div>`).join("");
   return shellIntro("Your private memory","Reflections, lessons and memories that become part of your life history.")
     +`<div class="action-row"><button class="primary" id="newJournalBtn">+ New entry</button></div><div class="list">${rows||`<div class="empty glass"><strong>No journal entries</strong><span>Write when you have something worth remembering.</span></div>`}</div>`;
 }
@@ -369,7 +388,7 @@ function renderHabits(){
 }
 
 function renderAssets(){
-  const rows=state.assets.map(a=>`<div class="list-row glass"><div class="main-copy"><b>${esc(a.name||a.title)}</b><small>${esc(a.category||"Asset")}</small></div><span class="value">${a.value?money(a.value):""}</span></div>`).join("");
+  const rows=state.assets.map(a=>`<div class="list-row glass"><div class="main-copy"><b>${esc(a.name||a.title)}</b><small>${esc(a.category||"Asset")}</small></div><div class="entity-actions"><span class="value">${a.value?money(a.value):""}</span><button class="mini-action" data-edit-store="assets" data-edit-id="${esc(a.id)}">Edit</button><button class="mini-action danger-mini" data-delete-store="assets" data-delete-id="${esc(a.id)}" data-delete-label="asset">Delete</button></div></div>`).join("");
   const subs=state.subscriptions.map(s=>`<div class="list-row glass"><div class="main-copy"><b>${esc(s.name||s.title)}</b><small>${esc(s.frequency||"Recurring")} · ${money(s.amount||0)}</small></div><span class="value">${esc(s.renewalDate||"")}</span></div>`).join("");
   return shellIntro("Know what you own and what bills you","Assets, subscriptions, warranties and recurring commitments.")
     +`<div class="action-row"><button class="primary" id="newAssetBtn">+ Asset</button><button class="secondary" id="newSubscriptionBtn">+ Subscription</button></div>
@@ -401,6 +420,7 @@ function renderSettings(){
     +`<div class="list">
       <div class="list-row glass"><div class="main-copy"><b>Cloud database</b><small>Cloud Firestore is authoritative.</small></div><span class="value positive">Connected</span></div>
       <div class="list-row glass"><div class="main-copy"><b>Firebase identity</b><small>${user?`Authenticated · ${user.isAnonymous?"anonymous":"account"}`:"Not connected"}</small></div><span class="value ${user?"positive":"negative"}">${user?"Active":"Offline"}</span></div>
+      <div class="list-row glass"><div class="main-copy"><b>Local development</b><small>Add <b>127.0.0.1</b> and <b>localhost</b> under Firebase → Authentication → Settings → Authorized domains for OAuth-ready local testing.</small></div><span class="value">Dev</span></div>
       <div class="list-row glass"><div class="main-copy"><b>Data model</b><small>Versioned entities and relationships.</small></div><span class="value positive">V4</span></div>
       <div class="list-row glass" id="exportRow"><div class="main-copy"><b>Export data</b><small>Download the complete Firestore snapshot as JSON.</small></div><span class="value">→</span></div>
       <div class="list-row glass danger-row" id="resetRow"><div class="main-copy"><b>Reset all Life Hub data</b><small>Delete this user's local Firestore records.</small></div><span class="value negative">Reset</span></div>
@@ -427,6 +447,7 @@ function openModal(title,kicker,body){
   $("#modalBody").innerHTML=body;
   $("#modal").classList.add("open");
   $("#modal").setAttribute("aria-hidden","false");
+  $$("[data-close-modal]").forEach(btn=>btn.onclick=closeModal);
 }
 function closeModal(){ $("#modal").classList.remove("open"); $("#modal").setAttribute("aria-hidden","true"); }
 
@@ -593,6 +614,80 @@ async function purchaseWishlist(id){
   };
 }
 
+async function deleteRecord(store,id,label){
+  if(!confirm(`Delete this ${label}? This cannot be undone.`)) return;
+  try{
+    await LifeDB.remove(store,id);
+    toast(`${label} deleted`);
+    refreshCurrentView();
+  }catch(error){ toast(fireError(error)); }
+}
+
+function openEditForm(store,id,type){
+  const collections={
+    goals:state.goals, projects:state.projects, tasks:state.tasks, events:state.events,
+    wishlist:state.wishes, people:state.people, notes:state.notes, journal:state.journal,
+    subscriptions:state.subscriptions, assets:state.assets
+  };
+  const record=collections[store]?.find(x=>x.id===id);
+  if(!record){ toast("Record not found"); return; }
+
+  const field = (label,id,value,type="text") =>
+    `<div class="field"><label>${label}</label><input id="${id}" type="${type}" value="${esc(value||"")}"></div>`;
+
+  let body="";
+  if(store==="goals"){
+    body=`<div class="form">${field("GOAL","fTitle",record.title)}${field("WHY / TARGET","fTarget",record.target)}${field("AREA","fArea",record.area)}
+      <div class="field"><label>PROGRESS (%)</label><input id="fProgress" type="number" min="0" max="100" value="${Number(record.progress||0)}"></div>
+      <div class="form-actions"><button class="secondary" data-close-modal>Cancel</button><button class="primary" id="saveEdit">Save</button></div></div>`;
+  }else if(store==="projects"){
+    body=`<div class="form">${field("PROJECT","fTitle",record.title)}${field("DESCRIPTION","fDesc",record.description)}
+      <div class="form-actions"><button class="secondary" data-close-modal>Cancel</button><button class="primary" id="saveEdit">Save</button></div></div>`;
+  }else if(store==="tasks"){
+    body=`<div class="form">${field("TASK","fTitle",record.title)}${field("DUE","fDate",record.dueAt,"datetime-local")}
+      <div class="form-actions"><button class="secondary" data-close-modal>Cancel</button><button class="primary" id="saveEdit">Save</button></div></div>`;
+  }else if(store==="events"){
+    body=`<div class="form">${field("EVENT","fTitle",record.title)}${field("DATE / TIME","fDate",record.startAt,"datetime-local")}
+      <div class="form-actions"><button class="secondary" data-close-modal>Cancel</button><button class="primary" id="saveEdit">Save</button></div></div>`;
+  }else if(store==="wishlist"){
+    body=`<div class="form">${field("ITEM","fTitle",record.title)}${field("PRICE (₹)","fAmount",record.price,"number")}
+      <div class="field"><label>PRIORITY</label><select id="fCat"><option ${record.priority==="High"?"selected":""}>High</option><option ${record.priority==="Medium"?"selected":""}>Medium</option><option ${record.priority==="Low"?"selected":""}>Low</option></select></div>
+      <div class="form-actions"><button class="secondary" data-close-modal>Cancel</button><button class="primary" id="saveEdit">Save</button></div></div>`;
+  }else if(store==="people"){
+    body=`<div class="form">${field("NAME","fTitle",record.name)}${field("RELATIONSHIP","fRelation",record.relationship)}
+      <div class="form-actions"><button class="secondary" data-close-modal>Cancel</button><button class="primary" id="saveEdit">Save</button></div></div>`;
+  }else if(store==="notes" || store==="journal"){
+    body=`<div class="form">${field("TITLE","fTitle",record.title)}<div class="field"><label>TEXT</label><textarea id="fText">${esc(record.text||"")}</textarea></div>
+      <div class="form-actions"><button class="secondary" data-close-modal>Cancel</button><button class="primary" id="saveEdit">Save</button></div></div>`;
+  }else if(store==="subscriptions"){
+    body=`<div class="form">${field("NAME","fTitle",record.name||record.title)}${field("AMOUNT (₹)","fAmount",record.amount,"number")}${field("RENEWAL DATE","fDate",record.renewalDate,"date")}
+      <div class="field"><label>FREQUENCY</label><select id="fFreq"><option ${record.frequency==="Monthly"?"selected":""}>Monthly</option><option ${record.frequency==="Yearly"?"selected":""}>Yearly</option><option ${record.frequency==="Weekly"?"selected":""}>Weekly</option></select></div>
+      <div class="form-actions"><button class="secondary" data-close-modal>Cancel</button><button class="primary" id="saveEdit">Save</button></div></div>`;
+  }else if(store==="assets"){
+    body=`<div class="form">${field("NAME","fTitle",record.name||record.title)}${field("CATEGORY","fCat",record.category)}${field("VALUE (₹)","fAmount",record.value,"number")}
+      <div class="form-actions"><button class="secondary" data-close-modal>Cancel</button><button class="primary" id="saveEdit">Save</button></div></div>`;
+  }
+
+  openModal(`Edit ${type}`,"EDIT",body);
+  $$("[data-close-modal]").forEach(b=>b.onclick=closeModal);
+  $("#saveEdit").onclick=async()=>{
+    try{
+      let updated={...record};
+      if(store==="goals") Object.assign(updated,{title:$("#fTitle").value,target:$("#fTarget").value,area:$("#fArea").value,progress:Number($("#fProgress").value||0)});
+      if(store==="projects") Object.assign(updated,{title:$("#fTitle").value,description:$("#fDesc").value});
+      if(store==="tasks") Object.assign(updated,{title:$("#fTitle").value,dueAt:$("#fDate").value||null});
+      if(store==="events") Object.assign(updated,{title:$("#fTitle").value,startAt:$("#fDate").value||null});
+      if(store==="wishlist") Object.assign(updated,{title:$("#fTitle").value,price:Number($("#fAmount").value||0),priority:$("#fCat").value});
+      if(store==="people") Object.assign(updated,{name:$("#fTitle").value,relationship:$("#fRelation").value});
+      if(store==="notes" || store==="journal") Object.assign(updated,{title:$("#fTitle").value,text:$("#fText").value});
+      if(store==="subscriptions") Object.assign(updated,{name:$("#fTitle").value,amount:Number($("#fAmount").value||0),renewalDate:$("#fDate").value||"",frequency:$("#fFreq").value});
+      if(store==="assets") Object.assign(updated,{name:$("#fTitle").value,category:$("#fCat").value,value:Number($("#fAmount").value||0)});
+      await LifeDB.create(store,updated);
+      closeModal(); toast("Updated"); refreshCurrentView();
+    }catch(error){ toast(fireError(error)); }
+  };
+}
+
 function refreshCurrentView(){
   if(currentContext?.type==="goal"){
     $("#pageContent").innerHTML=renderGoalDetail(currentContext.id);
@@ -683,6 +778,16 @@ function bindDynamic(){
   $$("[data-fund-wish]").forEach(b=>b.onclick=()=>fundWishlist(b.dataset.fundWish));
   $$("[data-buy-wish]").forEach(b=>b.onclick=()=>purchaseWishlist(b.dataset.buyWish));
   $$("[data-open-record]").forEach(b=>b.onclick=()=>openRecord(b.dataset.openRecord,b.dataset.id));
+  $$("[data-edit-store]").forEach(b=>b.onclick=e=>{
+    e.stopPropagation();
+    openEditForm(b.dataset.editStore,b.dataset.editId,
+      b.dataset.editStore==="wishlist"?"wishlist item":b.dataset.editStore.slice(0,-1));
+  });
+  $$("[data-delete-store]").forEach(b=>b.onclick=e=>{
+    e.stopPropagation();
+    deleteRecord(b.dataset.deleteStore,b.dataset.deleteId,b.dataset.deleteLabel||"record");
+  });
+  $("#todayEmptyAdd")?.addEventListener("click",openQuickCapture);
 
   $("#exportRow")?.addEventListener("click",async()=>{
     try{
@@ -696,6 +801,26 @@ function bindDynamic(){
 }
 
 document.addEventListener("click",e=>{
+  const homeAdd=e.target.closest("#todayEmptyAdd");
+  if(homeAdd){
+    openQuickCapture();
+    return;
+  }
+  const dynamicRecord=e.target.closest("[data-open-record]");
+  if(dynamicRecord){
+    openRecord(dynamicRecord.dataset.openRecord,dynamicRecord.dataset.id);
+    return;
+  }
+  const closeControl=e.target.closest("[data-close-modal]");
+  if(closeControl){
+    e.preventDefault();
+    closeModal();
+    return;
+  }
+  if(e.target.classList.contains("modal-backdrop")){
+    closeModal();
+    return;
+  }
   const page=e.target.closest("[data-page]");
   if(page) openPage(page.dataset.page);
   const add=e.target.closest("[data-add]");
@@ -745,3 +870,25 @@ hydrate().then(()=>{
 if("serviceWorker" in navigator){
   window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));
 }
+
+window.runLifeHubDiagnostics = async () => {
+  const checks = [];
+  const add = (name, pass, detail="") => checks.push({name, pass, detail});
+  add("LifeDB available", !!LifeDB, "module import");
+  add("Firebase available", !!LifeFirebase, "Firebase module");
+  add("Create API", typeof LifeDB?.create === "function");
+  add("Search API", typeof LifeDB?.search === "function");
+  add("Realtime subscriptions", typeof LifeDB?.subscribe === "function");
+  add("Reset API", typeof LifeDB?.reset === "function");
+  try {
+    const user = await Promise.race([
+      LifeDB.initialize().then(()=>LifeFirebase?.getUser?.()),
+      new Promise((_,reject)=>setTimeout(()=>reject(new Error("Firebase diagnostics timed out after 12 seconds.")),12000))
+    ]);
+    add("Firebase authentication", !!user, user ? `UID: ${user.uid}` : "No authenticated user");
+    add("Anonymous auth", !!user?.isAnonymous, user?.isAnonymous ? "Anonymous account active" : "Not anonymous");
+  } catch (e) {
+    add("Firebase authentication", false, LifeFirebase?.firebaseError ? LifeFirebase.firebaseError(e) : (e?.message || "Firebase diagnostic failed"));
+  }
+  return checks;
+};

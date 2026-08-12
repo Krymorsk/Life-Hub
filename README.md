@@ -254,3 +254,90 @@ Implemented the major connected Life Hub systems together:
 - The app now uses real ES module imports/exports between the Firebase data layer and controller.
 
 Next phase after V18: live Firestore listeners, proper user sign-in/linking, granular edit/delete flows, recurrence engine, notifications/reminders, and production-grade security review.
+
+
+## V19 — Live polish + CRUD
+- Added live Firestore listeners for core collections so updates from another tab/device flow into Home and modules automatically.
+- Added edit/delete flows for goals, tasks, events, wishlist items, people, notes, journal entries, subscriptions and assets.
+- Improved Today empty state so it is compact and actionable rather than occupying a large empty panel.
+- Added real-time balance recomputation from transactions.
+- Added quick add from the compact Today empty state.
+- Added live subscription and asset loading.
+- Firestore remains authoritative; UI mirrors live collection snapshots.
+
+
+## V21 — Modal + dynamic Home controls audit fix
+
+A super-detailed static + mock-browser audit found one concrete interaction issue:
+- Home-generated controls were being created after the initial `bindDynamic()` pass.
+- The Today empty state and Home event cards therefore needed global delegated handlers.
+- Modal close handling is now globally delegated as well, so dynamically generated Quick Capture forms cannot get stuck open.
+
+### Verified
+- JavaScript syntax passes for data.js and script.js.
+- ES-module exports/imports are present.
+- Firestore realtime listener wiring is present.
+- CRUD edit/delete wiring is present.
+- Goal → Project → Task → Event relation code is present.
+- Wishlist → Goal → Purchase → Transaction relation code is present.
+- Reset flow is present.
+- Modal X/backdrop/Escape closing passed the UI harness after the fix.
+- Quick Capture save path passed the UI harness.
+- Goal → Project → Task → Event creation/edit path passed the mock browser harness.
+
+
+## V22 — Auth diagnostics hardening
+
+The real-browser test showed the diagnostics promise staying pending. This version:
+- Adds bounded timeouts to Firebase Auth initialization and anonymous sign-in.
+- Provides precise timeout/error messages instead of an indefinitely pending diagnostic.
+- Verifies a Firebase user UID before reading/writing Firestore.
+- Adds a development note to whitelist `127.0.0.1` and `localhost` under Firebase Authentication → Settings → Authorized domains for OAuth-ready local development.
+
+The warning visible in the browser about `127.0.0.1` is an OAuth authorized-domain warning. It should be cleaned up in Firebase Console, but it is separate from Firestore security rules.
+
+
+## V23 — Life Intelligence batch
+
+Implemented together:
+
+### Today / Attention
+- Today prioritizes overdue tasks, due-today tasks and upcoming events.
+- Attention queue now includes overdue/due tasks, events in the next 48 hours, subscriptions renewing within 7 days, and nearby birthdays when a person has a birthday field.
+- Life Pulse remains derived from live data.
+
+### Recurrence
+- Subscriptions support frequency + renewal/next-run fields.
+- A reusable `addInterval()` helper is now present for daily/weekly/monthly/yearly recurrence.
+- Reminder records support one-time, daily, weekly and monthly repeat values.
+
+### Reminders + notifications
+- New Firestore `reminders` collection is active.
+- Reminder module with create/toggle/delete.
+- Browser Notification permission flow.
+- In-app checks surface high-priority attention when Life Hub is open.
+- Full background push notifications are intentionally not claimed yet; that will require a production FCM/service-worker flow.
+
+### Account management
+- Anonymous users can link a Google account.
+- Anonymous users can link an email/password credential.
+- Account status is visible in Settings.
+- Existing anonymous-session data remains under the same Firebase UID when the credential is linked.
+- Google OAuth setup still requires the provider to be enabled and authorized domains configured in Firebase Console.
+
+Firebase's current docs recommend linking multiple auth providers to the current user to preserve the same Firebase account and data, and note that redirect is preferred over popup on mobile. citeturn854776search1turn854776search7
+
+
+## V24 — Dedicated login experience
+- Added `login.html` + `login.css` + `login.js` as a separate authentication surface.
+- Added `auth-gate.js` so direct visits to the main app return to login until a session is explicitly completed.
+- Email/password sign-in.
+- Email/password account creation.
+- Google sign-in.
+- Guest/anonymous mode.
+- Guest → permanent account linking for email/password and Google, preserving the existing Firebase UID/data when linked.
+- Password reset email flow.
+- Added Sign Out in Life Hub Settings.
+- Login page uses the same Life Hub forest visual identity.
+
+Firebase's current web authentication docs support email/password auth, Google sign-in, anonymous auth, and linking credentials to an existing account; linking is the correct approach for converting a guest/anonymous account without abandoning the existing user's data. citeturn130575search0turn130575search1turn130575search2turn130575search3
