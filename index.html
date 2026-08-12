@@ -56,10 +56,8 @@
             <div><span class="section-kicker">RIGHT NOW</span><h2>Today</h2></div>
             <button class="text-btn" data-page="calendar">Open plan →</button>
           </div>
-          <div class="focus-items">
-            <button class="focus-item done"><span>✓</span><b>Morning reset</b><small>Done</small></button>
-            <button class="focus-item"><span>○</span><b>Work & learn</b><small>10:00</small></button>
-            <button class="focus-item"><span>○</span><b>Read 20 pages</b><small>19:00</small></button>
+          <div class="focus-items" id="todayFocusItems">
+            <div class="empty"><strong>No plans yet</strong><span>Your day will appear here as you add tasks and events.</span></div>
           </div>
         </div>
       </section>
@@ -75,22 +73,22 @@
         <div class="overview-grid">
           <button class="stat-card glass" data-page="finances">
             <span class="stat-icon money">₹</span>
-            <strong id="balance">₹25,430</strong>
+            <strong id="balance">₹0</strong>
             <small>Total balance</small>
           </button>
           <button class="stat-card glass" data-page="goals">
             <span class="stat-icon goal">◎</span>
-            <strong id="goalCount">3</strong>
+            <strong id="goalCount">0</strong>
             <small>Active goals</small>
           </button>
           <button class="stat-card glass" data-page="wishlist">
             <span class="stat-icon wish">♥</span>
-            <strong id="wishCount">8</strong>
+            <strong id="wishCount">0</strong>
             <small>Wishlist items</small>
           </button>
           <button class="stat-card glass" data-page="family">
             <span class="stat-icon family">♧</span>
-            <strong id="familyCount">6</strong>
+            <strong id="familyCount">0</strong>
             <small>People close to you</small>
           </button>
         </div>
@@ -104,7 +102,7 @@
           </div>
           <button class="icon-btn mini" id="customizeBtn" aria-label="Customize">⋮</button>
         </div>
-        <div class="module-grid">
+        <div class="module-grid core-modules">
           <button class="module-card glass" data-page="finances">
             <span class="module-icon green">▱</span><span><b>Finances</b><small>Money & budgets</small></span>
           </button>
@@ -121,68 +119,40 @@
             <span class="module-icon purple">◫</span><span><b>Journal</b><small>Thoughts & memories</small></span>
           </button>
           <button class="module-card glass" data-page="notes">
-            <span class="module-icon amber">≡</span><span><b>Notes</b><small>Ideas & quick capture</small></span>
+            <span class="module-icon amber">≡</span><span><b>Notes</b><small>Ideas & capture</small></span>
           </button>
           <button class="module-card glass" data-page="habits">
             <span class="module-icon violet">◌</span><span><b>Habits</b><small>Daily systems</small></span>
           </button>
           <button class="module-card glass" data-page="calendar">
-            <span class="module-icon blue">▣</span><span><b>Calendar</b><small>Time & plans</small></span>
-          </button>
-          <button class="module-card glass" data-page="vault">
-            <span class="module-icon slate">▰</span><span><b>Vault</b><small>Private essentials</small></span>
-          </button>
-          <button class="module-card glass" data-page="documents">
-            <span class="module-icon orange">□</span><span><b>Documents</b><small>Important files</small></span>
-          </button>
-          <button class="module-card glass" data-page="health">
-            <span class="module-icon rose">♡</span><span><b>Wellbeing</b><small>Energy & routines</small></span>
-          </button>
-          <button class="module-card glass" data-page="life-plan">
-            <span class="module-icon lime">✦</span><span><b>Life Plan</b><small>Big picture</small></span>
+            <span class="module-icon blue">▣</span><span><b>Plan</b><small>Time & commitments</small></span>
           </button>
         </div>
-      </section>
-
-      <section class="section">
-        <div class="section-heading">
-          <div><span class="section-kicker">RIGHT NOW</span><h2>Today</h2></div>
-          <button class="text-btn" data-page="calendar">Full calendar →</button>
-        </div>
-        <div class="today-card glass">
-          <div class="timeline-row done">
-            <span class="check">✓</span><div><b>Morning reset</b><small>Start the day intentionally</small></div><time>07:00</time>
-          </div>
-          <div class="timeline-row">
-            <button class="check interactive-check" data-task="Work & learn">○</button><div><b>Work & learn</b><small>Focus block</small></div><time>10:00</time>
-          </div>
-          <div class="timeline-row">
-            <button class="check interactive-check" data-task="Read 20 pages">○</button><div><b>Read 20 pages</b><small>Personal growth</small></div><time>19:00</time>
-          </div>
-          <div class="timeline-row">
-            <button class="check interactive-check" data-task="Plan tomorrow">○</button><div><b>Plan tomorrow</b><small>Close the loop</small></div><time>22:00</time>
-          </div>
-        </div>
+        <button class="more-areas glass" id="moreAreasBtn">
+          <span><b>More life areas</b><small>Vault · Documents · Wellbeing · Assets · Life Plan</small></span>
+          <strong>→</strong>
+        </button>
       </section>
 
       <section class="section">
         <div class="section-heading">
           <div><span class="section-kicker">DON'T LOSE TRACK</span><h2>Coming up</h2></div>
         </div>
-        <div class="upcoming-row">
-          <div class="upcoming glass"><span class="date-pill">15<br><small>AUG</small></span><div><b>Salary day</b><small>Finance</small></div></div>
-          <div class="upcoming glass"><span class="date-pill purple-pill">18<br><small>AUG</small></span><div><b>Family dinner</b><small>People</small></div></div>
-          <div class="upcoming glass"><span class="date-pill gold-pill">24<br><small>AUG</small></span><div><b>Wishlist review</b><small>Money</small></div></div>
+        <div class="upcoming-row" id="upcomingItems">
+          <div class="empty"><strong>Nothing upcoming</strong><span>Add an event or reminder when something matters.</span></div>
         </div>
       </section>
 
       <section class="section life-pulse">
         <div class="section-heading"><div><span class="section-kicker">THE BIG PICTURE</span><h2>Life pulse</h2></div></div>
         <div class="pulse-card glass">
-          <div class="pulse-head"><span>How is life moving?</span><b id="pulseScore">78%</b></div>
-          <div class="progress"><span style="width:78%"></span></div>
+          <div class="pulse-head"><span>How is life moving?</span><b id="pulseScore">0%</b></div>
+          <div class="progress"><span id="pulseBar" style="width:0%"></span></div>
           <div class="pulse-items">
-            <span>Money <b>82</b></span><span>Goals <b>74</b></span><span>Habits <b>71</b></span><span>People <b>91</b></span>
+            <span>Money <b id="pulseMoney">0</b></span>
+            <span>Goals <b id="pulseGoals">0</b></span>
+            <span>Habits <b id="pulseHabits">0</b></span>
+            <span>People <b id="pulsePeople">0</b></span>
           </div>
         </div>
       </section>
@@ -254,6 +224,7 @@
       </div>
       <div class="drawer-footer">
         <button class="drawer-link" data-page="settings">⚙ <span>Settings</span></button>
+        <button class="drawer-link danger-link" id="drawerResetBtn">↺ <span>Reset all Life Hub data</span></button>
       </div>
     </div>
   </aside>
@@ -280,6 +251,7 @@
   </div>
 
   <div class="toast" id="toast"></div>
-  <script src="script.js"></script>
+  <script type="module" src="data.js?v=18"></script>
+  <script type="module" src="script.js?v=18"></script>
 </body>
 </html>

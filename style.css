@@ -65,3 +65,83 @@ linear-gradient(180deg,rgba(4,21,14,.96),rgba(2,15,10,.98));}.page-header{positi
 @media(max-width:420px){.focus-items{grid-template-columns:1fr}.focus-item{min-height:50px;display:grid;grid-template-columns:24px 1fr auto;align-items:center;gap:7px}.focus-item span{margin:0}.focus-item b{margin:0}.focus-item small{margin:0}}
 
 .topbar,.fab,.bottom-nav{position:fixed;z-index:30}.topbar{position:sticky}
+
+
+/* ---------- V5 mobile UX / visual refinement ---------- */
+.glass{
+  background:linear-gradient(145deg,rgba(11,43,29,.43),rgba(3,22,15,.30));
+  border-color:rgba(177,255,206,.18);
+  box-shadow:0 14px 45px rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.035);
+  backdrop-filter:blur(13px) saturate(115%);
+  -webkit-backdrop-filter:blur(13px) saturate(115%);
+}
+.topbar{
+  background:rgba(5,28,19,.46);
+  backdrop-filter:blur(18px) saturate(125%);
+  -webkit-backdrop-filter:blur(18px) saturate(125%);
+}
+.hero{padding-top:26px}
+.hero h1{font-size:42px;letter-spacing:-.6px}
+.hero p{font-size:14px;color:#d7e4da}
+.quote{padding:15px 17px;margin-top:21px}
+.attention-card{background:linear-gradient(145deg,rgba(58,49,18,.28),rgba(5,27,17,.34));}
+.today-focus{background:linear-gradient(145deg,rgba(12,49,33,.43),rgba(3,23,16,.30));}
+.section{margin-top:25px}
+.section-heading{margin-bottom:10px}
+.section-heading h2{font-size:21px}
+.overview-grid{gap:8px}
+.stat-card{min-height:116px;padding:13px;border-radius:17px;background:linear-gradient(145deg,rgba(12,46,31,.43),rgba(3,22,15,.30))}
+.stat-card strong{font-size:19px}
+.stat-card small{font-size:10px}
+.stat-icon{width:34px;height:34px;margin-bottom:10px}
+.core-modules{gap:8px}
+.module-card{min-height:67px;padding:11px 10px;border-radius:15px;background:linear-gradient(145deg,rgba(12,46,31,.40),rgba(3,22,15,.27))}
+.module-icon{width:35px;height:35px;border-radius:11px;font-size:18px}
+.module-card b{font-size:12px}
+.module-card small{font-size:9px}
+.more-areas{
+  margin-top:8px;width:100%;border:1px solid var(--line);border-radius:15px;
+  padding:12px 13px;display:flex;align-items:center;justify-content:space-between;
+  text-align:left;cursor:pointer;color:#eaf3eb;
+  background:linear-gradient(145deg,rgba(12,46,31,.32),rgba(3,22,15,.22));
+}
+.more-areas b{display:block;font-size:11px}.more-areas small{display:block;color:var(--muted);font-size:9px;margin-top:3px}.more-areas strong{color:var(--green);font-size:17px}
+.upcoming-row{padding-bottom:2px}
+.upcoming{min-width:165px;background:linear-gradient(145deg,rgba(12,46,31,.36),rgba(3,22,15,.25))}
+.pulse-card{background:linear-gradient(145deg,rgba(12,46,31,.38),rgba(3,22,15,.25))}
+.connection-card{background:linear-gradient(145deg,rgba(12,46,31,.38),rgba(3,22,15,.25))}
+.bottom-nav{background:rgba(5,28,19,.60);backdrop-filter:blur(19px) saturate(125%);-webkit-backdrop-filter:blur(19px) saturate(125%)}
+.fab{width:53px;height:53px;border-radius:17px}
+.bottom-space{height:92px}
+@media(max-width:420px){
+  .main{padding-left:11px;padding-right:11px}
+  .hero{padding-left:5px;padding-right:5px}
+  .hero h1{font-size:39px}
+  .overview-grid{grid-template-columns:repeat(2,1fr)}
+  .stat-card{min-height:108px}
+  .section{margin-top:23px}
+}
+
+.entity-row{align-items:flex-start}
+.entity-actions{display:flex;flex-direction:column;align-items:flex-end;gap:8px}
+.mini-action{border:1px solid rgba(143,240,124,.2);background:rgba(143,240,124,.06);color:var(--green);border-radius:9px;padding:6px 8px;font-size:9px;cursor:pointer}
+.section-mini{margin:24px 2px 9px}
+.section-mini h4{margin:4px 0 0;font-size:14px}
+.empty{padding:25px 16px;text-align:center;color:var(--muted);border-radius:17px}
+.empty strong{display:block;color:#eaf3eb;margin-bottom:6px}
+.empty span{font-size:11px;line-height:1.5}
+.search-loading{padding:20px;text-align:center;color:var(--muted);font-size:11px}
+
+.danger-link{color:#ff9aad!important}
+.danger-link:hover{background:rgba(255,119,148,.08)!important}
+
+.danger-row{border-color:rgba(255,119,148,.16)}
+.journal-snippet{color:#b5c5ba;font-size:11px;line-height:1.5;margin:8px 0 0}
+.focus-item,.upcoming{cursor:pointer}
+
+/* V18 Life OS refinements */
+.primary,.secondary,.mini-action,.capture-option,.focus-item,.upcoming,.text-btn,.icon-btn,.nav-item,.drawer-link,.fab{touch-action:manipulation}
+.metric-note{color:var(--muted);font-size:10px;margin-top:4px}
+.entity-actions{min-width:72px}
+.data-card b{word-break:break-word}
+.list-row button{font-size:10px}

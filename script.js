@@ -1,320 +1,747 @@
+import { LifeDB, LifeFirebase } from "./data.js?v=18";
+
 const state = {
-  balance: Number(localStorage.getItem("lifehub_balance") || 25430),
-  goals: JSON.parse(localStorage.getItem("lifehub_goals") || "[]"),
-  wishes: JSON.parse(localStorage.getItem("lifehub_wishes") || "[]"),
-  transactions: JSON.parse(localStorage.getItem("lifehub_transactions") || "[]"),
-  notes: JSON.parse(localStorage.getItem("lifehub_notes") || "[]"),
-  journal: JSON.parse(localStorage.getItem("lifehub_journal") || "[]"),
-  tasks: JSON.parse(localStorage.getItem("lifehub_tasks") || "[]")
+  balance: 0,
+  people: [],
+  events: [],
+  habits: [],
+  goals: [],
+  wishes: [],
+  transactions: [],
+  notes: [],
+  journal: [],
+  tasks: [],
+  projects: [],
+  subscriptions: [],
+  assets: [],
+  profile: null
 };
 
-const quotes = [
-  "Small systems create a bigger life.",
-  "Make today easier for tomorrow-you.",
-  "Protect your attention like you protect your money.",
-  "A calm life is built, not found.",
-  "Keep what matters close. Let the rest stay simple."
-];
-
-const searchIndex = [
-  ["Finances","Money & budgets","finances"],["Goals & projects","Direction and progress","goals"],
-  ["Wishlist","Things you want","wishlist"],["Family & people","Relationships and important dates","family"],
-  ["Journal","Memories and reflections","journal"],["Notes","Quick capture and ideas","notes"],
-  ["Habits & routines","Recurring systems","habits"],["Calendar & planning","Events and time","calendar"],
-  ["Private vault","Sensitive information","vault"],["Documents","Important files","documents"],
-  ["Wellbeing","Energy and routines","health"],["Life plan","Values and long-term direction","life-plan"],
-  ["Tasks & inbox","Actions and reminders","tasks"],["Assets & subscriptions","Things you own and recurring bills","assets"],
-  ["Life insights","Patterns across your life","insights"],["Settings","Privacy, backup and preferences","settings"]
-];
+let currentPage = "home";
+let currentContext = null;
+let toastTimer = null;
 
 const pageMeta = {
   finances:["MONEY","Finances"], goals:["DIRECTION","Goals & projects"], wishlist:["WANT","Wishlist"],
-  family:["PEOPLE","Family & people"], journal:["MEMORY","Journal"], notes:["CAPTURE","Notes"],
-  habits:["SYSTEMS","Habits & routines"], calendar:["TIME","Calendar & planning"], vault:["PRIVATE","Private vault"],
+  family:["PEOPLE","People & relationships"], journal:["MEMORY","Journal"], notes:["CAPTURE","Notes"],
+  habits:["SYSTEMS","Habits & routines"], calendar:["TIME","Plan"], vault:["PRIVATE","Private vault"],
   documents:["ASSETS","Documents"], health:["WELLBEING","Wellbeing"], "life-plan":["VISION","Life plan"],
-  tasks:["ACTION","Tasks & inbox"], assets:["LIFE ADMIN","Assets & subscriptions"],
+  tasks:["ACTION","Tasks"], assets:["LIFE ADMIN","Assets & subscriptions"],
   insights:["REFLECTION","Life insights"], settings:["CONTROL","Settings"]
 };
 
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 
-function save(){
-  localStorage.setItem("lifehub_balance", state.balance);
-  localStorage.setItem("lifehub_goals", JSON.stringify(state.goals));
-  localStorage.setItem("lifehub_wishes", JSON.stringify(state.wishes));
-  localStorage.setItem("lifehub_transactions", JSON.stringify(state.transactions));
-  localStorage.setItem("lifehub_notes", JSON.stringify(state.notes));
-  localStorage.setItem("lifehub_journal", JSON.stringify(state.journal));
-  localStorage.setItem("lifehub_tasks", JSON.stringify(state.tasks));
+function esc(v){
+  return String(v ?? "").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 }
-
-function money(n){ return "₹" + Number(n).toLocaleString("en-IN"); }
-function today(){
-  const d = new Date();
-  return d.toLocaleDateString("en-IN",{day:"2-digit",month:"short",year:"numeric"});
+function money(n){ return "₹" + Number(n || 0).toLocaleString("en-IN"); }
+function uid(prefix){ return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2,8)}`; }
+function now(){ return new Date().toISOString(); }
+function fmtDate(v){
+  if(!v) return "Not scheduled";
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? String(v) :
+    d.toLocaleString("en-IN",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"});
 }
 function toast(msg){
-  const el=$("#toast"); el.textContent=msg; el.classList.add("show");
-  clearTimeout(window.toastTimer); window.toastTimer=setTimeout(()=>el.classList.remove("show"),2200);
+  const el=$("#toast");
+  if(!el) return;
+  el.textContent=msg;
+  el.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>el.classList.remove("show"),2300);
 }
-function updateHome(){
-  $("#balance").textContent=money(state.balance);
-  $("#goalCount").textContent=state.goals.length || 3;
-  $("#wishCount").textContent=state.wishes.length || 8;
+function fireError(error){
+  return LifeFirebase?.firebaseError ? LifeFirebase.firebaseError(error) : (error?.message || "Firebase request failed.");
 }
-function updateAttention(){
-  const pendingTasks = state.tasks.filter(t=>!t.done).length;
-  const goalCount = state.goals.length || 3;
-  const text = pendingTasks ? `${pendingTasks} unfinished task${pendingTasks===1?"":"s"} are waiting in your inbox.` :
-    `${goalCount} active goals, upcoming dates and money items can be reviewed here.`;
-  $("#attentionTitle").textContent = pendingTasks ? `${pendingTasks} task${pendingTasks===1?"":"s"} worth checking today` : "3 things worth checking today";
-  $("#attentionText").textContent = text;
+
+async function create(store, record){
+  if(!LifeDB?.create) throw new Error("Firebase data service is unavailable.");
+  return LifeDB.create(store, {...record, id:record.id || uid(store.replace(/s$/,""))});
 }
+async function link(fromType,fromId,relation,toType,toId){
+  return LifeDB.link(fromType,fromId,relation,toType,toId);
+}
+
+async function hydrate(){
+  try{
+    const stored = await LifeDB.initialize();
+    Object.assign(state, stored);
+    state.subscriptions = await LifeDB.all("subscriptions");
+    state.assets = await LifeDB.all("assets");
+    state.profile = await LifeDB.getUserProfile();
+    if(!state.profile) {
+      state.profile = {
+        displayName:"Arish",
+        createdAt:now()
+      };
+      await LifeDB.saveUserProfile(state.profile);
+    }
+    $("#firebaseStatusValue")?.classList.remove("negative");
+  }catch(error){
+    console.error("Firebase bootstrap failed:",error);
+    toast(fireError(error));
+  }
+}
+
 function greeting(){
   const h=new Date().getHours();
   $("#greeting").textContent=h<12?"GOOD MORNING":h<18?"GOOD AFTERNOON":"GOOD EVENING";
-  $("#dailyQuote").textContent=quotes[new Date().getDate()%quotes.length];
+  $("#dailyQuote").textContent=[
+    "A calm life is built, not found.",
+    "Make today easier for tomorrow-you.",
+    "Small systems create a bigger life.",
+    "Protect your attention like you protect your money."
+  ][new Date().getDate()%4];
 }
+
+function updateHome(){
+  $("#balance").textContent=money(state.balance);
+  $("#goalCount").textContent=state.goals.length;
+  $("#wishCount").textContent=state.wishes.length;
+  $("#familyCount").textContent=state.people.length;
+  renderToday();
+  renderUpcoming();
+  renderAttention();
+  renderPulse();
+}
+
+function renderToday(){
+  const box=$("#todayFocusItems");
+  if(!box) return;
+  const pending = state.tasks.filter(t=>!t.done).map(t=>({
+    type:"task", id:t.id, title:t.title, meta:t.dueAt?fmtDate(t.dueAt):"Next action"
+  }));
+  const events = state.events
+    .filter(e=>e.startAt && new Date(e.startAt)>=new Date())
+    .sort((a,b)=>new Date(a.startAt)-new Date(b.startAt))
+    .map(e=>({type:"event",id:e.id,title:e.title,meta:fmtDate(e.startAt)}));
+  const items=[...pending,...events].slice(0,4);
+  box.innerHTML=items.length ? items.map(x=>`
+    <button class="focus-item" data-open-record="${esc(x.type)}" data-id="${esc(x.id)}">
+      <span>${x.type==="task"?"○":"◷"}</span><b>${esc(x.title)}</b><small>${esc(x.meta)}</small>
+    </button>`).join("") :
+    `<div class="empty"><strong>No plans yet</strong><span>Add a task or event and it will appear here.</span></div>`;
+}
+
+function renderUpcoming(){
+  const box=$("#upcomingItems");
+  if(!box) return;
+  const events=state.events.filter(e=>e.startAt && new Date(e.startAt)>=new Date())
+    .sort((a,b)=>new Date(a.startAt)-new Date(b.startAt)).slice(0,3);
+  box.innerHTML=events.length ? events.map(e=>{
+    const d=new Date(e.startAt);
+    return `<button class="upcoming glass" data-open-record="event" data-id="${esc(e.id)}">
+      <span class="date-pill">${d.getDate()}<br><small>${d.toLocaleString("en",{month:"short"}).toUpperCase()}</small></span>
+      <div><b>${esc(e.title)}</b><small>${esc(fmtDate(e.startAt))}</small></div>
+    </button>`;
+  }).join("") :
+  `<div class="empty"><strong>Nothing upcoming</strong><span>Add an event when something matters.</span></div>`;
+}
+
+function renderAttention(){
+  const pending = state.tasks.filter(t=>!t.done);
+  const upcoming = state.events.filter(e=>e.startAt && new Date(e.startAt)>=new Date());
+  const goalProgress = state.goals.length ?
+    Math.round(state.goals.reduce((a,g)=>a+Number(g.progress||0),0)/state.goals.length) : 0;
+  const bits=[];
+  if(pending.length) bits.push(`${pending.length} task${pending.length===1?"":"s"}`);
+  if(upcoming.length) bits.push(`${upcoming.length} upcoming`);
+  if(state.goals.length) bits.push(`${state.goals.length} goal${state.goals.length===1?"":"s"}`);
+  $("#attentionTitle").textContent = bits.length ? bits.join(" · ") : "Your attention queue is empty";
+  $("#attentionText").textContent = bits.length
+    ? `Average goal progress is ${goalProgress}%. Review what deserves your attention today.`
+    : "Add a goal, task or event and Life Hub will surface what needs you.";
+}
+
+function renderPulse(){
+  const moneyScore=state.transactions.length ? Math.max(0,Math.min(100,Math.round((state.balance||0)/1000))) : 0;
+  const goalScore=state.goals.length ? Math.round(state.goals.reduce((a,g)=>a+Number(g.progress||0),0)/state.goals.length) : 0;
+  const habitScore=state.habits.length ? 100 : 0;
+  const peopleScore=Math.min(100,state.people.length*10);
+  const avg=Math.round((moneyScore+goalScore+habitScore+peopleScore)/4);
+  $("#pulseScore").textContent=`${avg}%`;
+  $("#pulseBar").style.width=`${avg}%`;
+  $("#pulseMoney").textContent=moneyScore;
+  $("#pulseGoals").textContent=goalScore;
+  $("#pulseHabits").textContent=habitScore;
+  $("#pulsePeople").textContent=peopleScore;
+}
+
+function openDrawer(){ $("#drawer").classList.add("open"); }
+function closeDrawer(){ $("#drawer").classList.remove("open"); }
 function openSearch(){
   $("#searchOverlay").classList.add("open");
   $("#searchOverlay").setAttribute("aria-hidden","false");
-  setTimeout(()=>$("#globalSearch").focus(),80);
-  renderSearch("");
+  $("#globalSearch").focus();
+  $("#searchResults").innerHTML=`<div class="empty"><strong>Search your life</strong><span>People, goals, tasks, money, notes and more.</span></div>`;
 }
 function closeSearch(){
   $("#searchOverlay").classList.remove("open");
   $("#searchOverlay").setAttribute("aria-hidden","true");
 }
-function renderSearch(query){
-  const q=query.trim().toLowerCase();
-  const results=searchIndex.filter(x=>!q || x[0].toLowerCase().includes(q) || x[1].toLowerCase().includes(q));
-  $("#searchResults").innerHTML=results.length
-    ? results.map(x=>`<button class="search-result" data-search-page="${x[2]}"><b>${x[0]}</b><small>${x[1]}</small></button>`).join("")
-    : `<div class="empty"><strong>Nothing found</strong>Try another word or create it with +.</div>`;
+async function searchRecords(queryText){
+  const box=$("#searchResults");
+  const q=String(queryText||"").trim();
+  if(!q){ box.innerHTML=`<div class="empty"><strong>Search your life</strong><span>People, goals, tasks, money, notes and more.</span></div>`; return; }
+  box.innerHTML=`<div class="search-loading">Searching…</div>`;
+  try{
+    const results=await LifeDB.search(q);
+    box.innerHTML=results.length ? results.map(r=>`
+      <button class="search-result" data-result-store="${esc(r.store)}" data-result-id="${esc(r.id)}">
+        <span class="search-result-type">${esc(r.type)}</span><b>${esc(r.title)}</b>${r.subtitle?`<small>${esc(r.subtitle)}</small>`:""}
+      </button>`).join("") :
+      `<div class="empty"><strong>Nothing found</strong><span>Try another name, title or amount.</span></div>`;
+  }catch(error){ box.innerHTML=`<div class="empty"><strong>Search failed</strong><span>${esc(fireError(error))}</span></div>`; }
 }
-function openDrawer(){ $("#drawer").classList.add("open"); }
-function closeDrawer(){ $("#drawer").classList.remove("open"); }
 
 function openPage(page){
   if(page==="home"){ closePage(); return; }
+  currentPage=page;
   closeDrawer();
   const meta=pageMeta[page]||["LIFE","Life Hub"];
   $("#pageKicker").textContent=meta[0]; $("#pageTitle").textContent=meta[1];
-  $("#pageLayer").classList.add("open"); $("#pageLayer").setAttribute("aria-hidden","false");
+  $("#pageLayer").classList.add("open");
+  $("#pageLayer").setAttribute("aria-hidden","false");
   renderPage(page);
-  $("#pageAction").onclick=()=>openAddFor(page);
 }
-function closePage(){ $("#pageLayer").classList.remove("open"); $("#pageLayer").setAttribute("aria-hidden","true"); }
+function closePage(){
+  currentContext=null;
+  $("#pageLayer").classList.remove("open");
+  $("#pageLayer").setAttribute("aria-hidden","true");
+}
+function shellIntro(title,desc){
+  return `<div class="page-hero"><span class="section-kicker">LIFE HUB</span><h3>${esc(title)}</h3><p>${esc(desc)}</p></div>`;
+}
+
 function renderPage(page){
-  const c=$("#pageContent");
-  const renderers={finances:renderFinances,goals:renderGoals,wishlist:renderWishlist,family:renderFamily,
-    journal:renderJournal,notes:renderNotes,habits:renderHabits,calendar:renderCalendar,vault:renderVault,
-    documents:renderDocuments,health:renderHealth,"life-plan":renderLifePlan,tasks:renderTasks,assets:renderAssets,
-    insights:renderInsights,settings:renderSettings};
-  c.innerHTML=(renderers[page]||renderGeneric)();
+  const renderers={
+    finances:renderFinances,goals:renderGoals,wishlist:renderWishlist,family:renderFamily,
+    journal:renderJournal,notes:renderNotes,habits:renderHabits,calendar:renderCalendar,
+    vault:renderVault,documents:renderDocuments,health:renderHealth,"life-plan":renderLifePlan,
+    tasks:renderTasks,assets:renderAssets,insights:renderInsights,settings:renderSettings
+  };
+  $("#pageContent").innerHTML=(renderers[page]||renderGeneric)();
+  $("#pageAction").onclick=()=>openAddFor(page);
   bindDynamic();
 }
-function shellIntro(title,desc){return `<div class="page-hero"><span class="section-kicker">LIFE HUB</span><h3>${title}</h3><p>${desc}</p></div>`}
-function renderFinances(){
-  const tx=state.transactions.length?state.transactions:[
-    {title:"Salary",cat:"Income",amount:40000,type:"in"},
-    {title:"Parents",cat:"Family",amount:-20000,type:"out"},
-    {title:"Monthly expenses",cat:"Living",amount:-1430,type:"out"}
-  ];
-  return shellIntro("Know where your money is going.","A simple financial command center. Add income, expenses, recurring bills and future purchases without making money feel complicated.")
-  + `<div class="data-grid"><div class="data-card glass"><small>AVAILABLE</small><b>${money(state.balance)}</b></div><div class="data-card glass"><small>THIS MONTH</small><b>${money(Math.abs(tx.filter(x=>x.type==="out").reduce((a,x)=>a+x.amount,0)))}</b></div></div>
-  <div class="chart glass">${[45,65,35,80,58,72,52,88,64,74,49,61].map(x=>`<span class="bar" style="height:${x}%"></span>`).join("")}</div>
-  <div class="action-row"><button class="primary" id="addExpense">+ Expense</button><button class="secondary" id="addIncome">+ Income</button></div>
-  <div class="list">${tx.map(x=>`<div class="list-row glass"><div class="main-copy"><b>${x.title}</b><small>${x.cat} · ${today()}</small></div><span class="value ${x.type==="in"?"positive":"negative"}">${x.type==="in"?"+":"-"}${money(Math.abs(x.amount))}</span></div>`).join("")}</div>`;
-}
+
 function renderGoals(){
-  const goals=state.goals.length?state.goals:[
-    {title:"Build emergency fund",progress:62,target:"₹1,50,000"},
-    {title:"Get stronger & healthier",progress:44,target:"12 month system"},
-    {title:"Level up my career",progress:28,target:"Next role"}
-  ];
-  return shellIntro("Turn intentions into visible progress.","Goals become easier when they have a clear outcome, next action and a date.")
-  + `<div class="list">${goals.map(g=>`<div class="list-row glass" style="display:block"><div style="display:flex;justify-content:space-between"><div class="main-copy"><b>${g.title}</b><small>${g.target||"Personal goal"}</small></div><span class="value positive">${g.progress}%</span></div><div class="progress"><span style="width:${g.progress}%"></span></div></div>`).join("")}</div>`;
+  const goals=state.goals;
+  const rows=goals.length?goals.map(g=>`
+    <div class="list-row glass entity-row">
+      <div class="main-copy"><span class="tag">${esc(g.area||"GOAL")}</span><b>${esc(g.title)}</b><small>${esc(g.target||"")}</small>
+      <div class="progress"><span style="width:${Number(g.progress||0)}%"></span></div></div>
+      <div class="entity-actions"><span class="value positive">${Number(g.progress||0)}%</span><button class="mini-action" data-open-goal="${esc(g.id)}">Open</button></div>
+    </div>`).join("") :
+    `<div class="empty glass"><strong>No goals yet</strong><span>Create an outcome, then add projects, tasks and events.</span></div>`;
+  return shellIntro("Goals that move your life","Goals are outcomes. Projects are the work. Tasks are the next actions.")
+    +`<div class="action-row"><button class="primary" id="newGoalBtn">+ New goal</button></div><div class="list">${rows}</div>`;
 }
-function renderWishlist(){
-  const wishes=state.wishes.length?state.wishes:[
-    {title:"Something worth saving for",price:25000,priority:"High"},
-    {title:"New experience",price:5000,priority:"Medium"},
-    {title:"Upgrade a useful tool",price:12000,priority:"Low"}
-  ];
-  return shellIntro("Want it? Give it a place.","Wishlist items can eventually connect to your budget, savings goals and purchase plans.")
-  + `<div class="list">${wishes.map(w=>`<div class="list-row glass"><div class="main-copy"><b>${w.title}</b><small>${w.priority} priority</small></div><span class="value">${money(w.price||0)}</span></div>`).join("")}</div>`;
+
+function renderGoalDetail(id){
+  const goal=state.goals.find(g=>g.id===id);
+  if(!goal) return renderGoals();
+  currentContext={type:"goal",id};
+  const projects=state.projects.filter(p=>p.goalId===id);
+  const tasks=state.tasks.filter(t=>t.goalId===id || projects.some(p=>p.id===t.projectId));
+  const events=state.events.filter(e=>e.goalId===id || projects.some(p=>p.id===e.projectId));
+  return shellIntro(goal.title,goal.target||"Goal")
+    +`<div class="data-grid">
+      <div class="data-card glass"><small>PROGRESS</small><b>${Number(goal.progress||0)}%</b></div>
+      <div class="data-card glass"><small>PROJECTS</small><b>${projects.length}</b></div>
+      <div class="data-card glass"><small>OPEN TASKS</small><b>${tasks.filter(t=>!t.done).length}</b></div>
+      <div class="data-card glass"><small>EVENTS</small><b>${events.length}</b></div>
+    </div>
+    <div class="action-row"><button class="primary" id="addProjectBtn">+ Project</button><button class="secondary" id="addGoalTaskBtn">+ Task</button><button class="secondary" id="addGoalEventBtn">+ Event</button></div>
+    <div class="section-mini"><span class="section-kicker">PROJECTS</span><h4>Work inside this goal</h4></div>
+    <div class="list">${projects.length?projects.map(p=>`
+      <button class="list-row glass" data-open-project="${esc(p.id)}">
+        <div class="main-copy"><b>${esc(p.title)}</b><small>${esc(p.description||"")}</small></div><span class="value">${tasks.filter(t=>t.projectId===p.id).length} tasks</span>
+      </button>`).join(""):`<div class="empty glass"><strong>No projects yet</strong><span>Add the first project that moves this goal.</span></div>`}</div>
+    <div class="section-mini"><span class="section-kicker">NEXT ACTIONS</span><h4>Concrete things to do</h4></div>
+    <div class="list">${tasks.length?tasks.map(t=>`
+      <div class="list-row glass"><div class="main-copy"><b>${esc(t.title)}</b><small>${esc(t.projectId?"Project action":"Goal action")}</small></div>
+      <button class="check task-toggle ${t.done?"completed":""}" data-task-id="${esc(t.id)}">${t.done?"✓":"○"}</button></div>`).join(""):`<div class="empty glass"><strong>No tasks yet</strong><span>Create the next physical action.</span></div>`}</div>
+    <div class="section-mini"><span class="section-kicker">TIME</span><h4>Events connected to this goal</h4></div>
+    <div class="list">${events.length?events.map(e=>`<div class="list-row glass"><div class="main-copy"><b>${esc(e.title)}</b><small>${esc(fmtDate(e.startAt))}</small></div></div>`).join(""):`<div class="empty glass"><strong>No events yet</strong><span>Schedule a deadline, meeting, test or focus block.</span></div>`}</div>`;
 }
-function renderFamily(){
-  const people=["Mom","Dad","Ana","Alisha","Nagma","Family"];
-  return shellIntro("People are part of the system.","Keep birthdays, important dates, notes, gift ideas, shared plans and little things you don't want to forget.")
-  + `<div class="data-grid">${people.map((p,i)=>`<div class="data-card glass"><span class="tag">${i<2?"FAMILY":"CLOSE"} </span><b style="font-size:16px">${p}</b><small>Open profile →</small></div>`).join("")}</div>
-  <div class="list"><div class="list-row glass"><div class="main-copy"><b>Upcoming</b><small>Remember the people who matter</small></div><span class="value positive">3 dates</span></div></div>`;
+
+function renderProjectDetail(id){
+  const project=state.projects.find(p=>p.id===id);
+  if(!project) return renderGoals();
+  currentContext={type:"project",id};
+  const tasks=state.tasks.filter(t=>t.projectId===id);
+  const events=state.events.filter(e=>e.projectId===id);
+  const goal=state.goals.find(g=>g.id===project.goalId);
+  return shellIntro(project.title,project.description||"Project")
+    +`<div class="data-grid">
+      <div class="data-card glass"><small>GOAL</small><b>${esc(goal?.title||"—")}</b></div>
+      <div class="data-card glass"><small>OPEN TASKS</small><b>${tasks.filter(t=>!t.done).length}</b></div>
+      <div class="data-card glass"><small>DONE</small><b>${tasks.filter(t=>t.done).length}</b></div>
+      <div class="data-card glass"><small>EVENTS</small><b>${events.length}</b></div>
+    </div>
+    <div class="action-row"><button class="primary" id="addProjectTaskBtn">+ Task</button><button class="secondary" id="addProjectEventBtn">+ Event</button></div>
+    <div class="section-mini"><span class="section-kicker">TASKS</span><h4>Work to complete</h4></div>
+    <div class="list">${tasks.length?tasks.map(t=>`<div class="list-row glass"><div class="main-copy"><b>${esc(t.title)}</b></div><button class="check task-toggle ${t.done?"completed":""}" data-task-id="${esc(t.id)}">${t.done?"✓":"○"}</button></div>`).join(""):`<div class="empty glass"><strong>No tasks yet</strong><span>Add the first concrete action.</span></div>`}</div>
+    <div class="section-mini"><span class="section-kicker">EVENTS</span><h4>Time commitments</h4></div>
+    <div class="list">${events.length?events.map(e=>`<div class="list-row glass"><div class="main-copy"><b>${esc(e.title)}</b><small>${esc(fmtDate(e.startAt))}</small></div></div>`).join(""):`<div class="empty glass"><strong>No events yet</strong><span>Add a deadline, meeting or focused block.</span></div>`}</div>`;
 }
-function renderJournal(){
-  const entries=state.journal.length?state.journal:[{title:"Today",text:"A place for honest thoughts, lessons and memories.",date:today()}];
-  return shellIntro("Your private memory.","Journal entries, reflections, gratitude, lessons learned and meaningful moments — searchable later.")
-  + `<div class="action-row"><button class="primary" id="newJournal">+ New entry</button></div><div class="list">${entries.map(e=>`<div class="list-row glass"><div class="main-copy"><b>${e.title}</b><small>${e.date||today()}</small><p style="color:#b5c5ba;font-size:11px;line-height:1.5">${e.text||""}</p></div></div>`).join("")}</div>`;
+
+function renderTasks(){
+  const rows=state.tasks.map(t=>`
+    <div class="list-row glass"><div class="main-copy"><b>${esc(t.title)}</b><small>${esc(t.goalId?"Goal-linked":t.projectId?"Project-linked":"Standalone")}${t.dueAt?" · "+esc(fmtDate(t.dueAt)):""}</small></div>
+    <button class="check task-toggle ${t.done?"completed":""}" data-task-id="${esc(t.id)}">${t.done?"✓":"○"}</button></div>`).join("");
+  return shellIntro("Tasks that move things forward","Keep actions concrete, and link them when context helps.")
+    +`<div class="action-row"><button class="primary" id="newTaskBtn">+ New task</button></div><div class="list">${rows||`<div class="empty glass"><strong>No tasks yet</strong><span>Add one clear next action.</span></div>`}</div>`;
 }
-function renderNotes(){
-  const notes=state.notes.length?state.notes:[{title:"Inbox",text:"Capture anything before deciding where it belongs."}];
-  return shellIntro("Capture first. Organize later.","One fast inbox for ideas, reminders, links, thoughts and things you need to process.")
-  + `<div class="action-row"><button class="primary" id="newNote">+ Quick note</button></div><div class="list">${notes.map(n=>`<div class="list-row glass"><div class="main-copy"><b>${n.title}</b><small>${n.date||today()}</small><p style="color:#b5c5ba;font-size:11px">${n.text||""}</p></div></div>`).join("")}</div>`;
-}
-function renderHabits(){
-  const habits=[["Drink enough water",5],["Move / exercise",4],["Read",3],["Plan tomorrow",6]];
-  return shellIntro("Build the person you want to be.","Habits are small recurring votes for the life you want.")
-  + `<div class="list">${habits.map(h=>`<div class="list-row glass"><div class="main-copy"><b>${h[0]}</b><small>Current streak</small></div><span class="value positive">🔥 ${h[1]}d</span></div>`).join("")}</div>`;
-}
+
 function renderCalendar(){
-  return shellIntro("Your time is your life.","See the commitments, focus blocks and important dates that shape your week.")
-  + `<div class="data-grid"><div class="data-card glass"><small>TODAY</small><b>4</b><small>planned items</small></div><div class="data-card glass"><small>THIS WEEK</small><b>12</b><small>events & tasks</small></div></div>
-  <div class="list">${["Morning reset","Work & learn","Read 20 pages","Plan tomorrow"].map((x,i)=>`<div class="list-row glass"><div class="main-copy"><b>${x}</b><small>${["07:00","10:00","19:00","22:00"][i]}</small></div><span class="value positive">${i===0?"Done":"Plan"}</span></div>`).join("")}</div>`;
+  const events=state.events.slice().sort((a,b)=>String(a.startAt||"").localeCompare(String(b.startAt||"")));
+  const rows=events.map(e=>`<button class="list-row glass" data-open-record="event" data-id="${esc(e.id)}"><div class="main-copy"><b>${esc(e.title)}</b><small>${esc(fmtDate(e.startAt))}</small></div><span class="value">Open</span></button>`).join("");
+  return shellIntro("Plan the time that makes the rest possible","Events can connect to goals, projects and people.")
+    +`<div class="action-row"><button class="primary" id="newEventBtn">+ New event</button></div><div class="list">${rows||`<div class="empty glass"><strong>No events yet</strong><span>Add a commitment, deadline or meaningful date.</span></div>`}</div>`;
 }
+
+function renderWishlist(){
+  const rows=state.wishes.map(w=>`<div class="list-row glass">
+    <div class="main-copy"><b>${esc(w.title)}</b><small>${esc(w.priority||"Unprioritized")} · ${w.price?money(w.price):"No price"}</small></div>
+    <div class="entity-actions"><span class="value">${w.purchased?"Purchased":w.goalId?"Funded":"Unfunded"}</span>
+      <button class="mini-action" data-fund-wish="${esc(w.id)}">${w.goalId?"Goal":"Fund it"}</button>
+      ${!w.purchased?`<button class="mini-action" data-buy-wish="${esc(w.id)}">Purchase</button>`:""}
+    </div>
+  </div>`).join("");
+  return shellIntro("Things worth having","Wishlist items can become savings goals, then real purchase transactions.")
+    +`<div class="action-row"><button class="primary" id="newWishBtn">+ Add to wishlist</button></div><div class="list">${rows||`<div class="empty glass"><strong>Wishlist is empty</strong><span>Save a want without turning it into a commitment yet.</span></div>`}</div>`;
+}
+
+function renderFinances(){
+  const tx=state.transactions;
+  const income=tx.filter(x=>x.type==="in").reduce((a,x)=>a+Number(x.amount||0),0);
+  const expense=tx.filter(x=>x.type==="out").reduce((a,x)=>a+Math.abs(Number(x.amount||0)),0);
+  const rows=tx.slice().reverse().map(x=>`<div class="list-row glass"><div class="main-copy"><b>${esc(x.title)}</b><small>${esc(x.cat||"General")}${x.relatedWishlistId?" · Wishlist purchase":""}</small></div><span class="value ${x.type==="in"?"positive":"negative"}">${x.type==="in"?"+":"-"}${money(Math.abs(x.amount||0))}</span></div>`).join("");
+  const subscriptions=state.subscriptions.map(s=>`<div class="list-row glass"><div class="main-copy"><b>${esc(s.name||s.title)}</b><small>${esc(s.frequency||"Recurring")} · ${money(s.amount||0)}</small></div><span class="value">Renewal</span></div>`).join("");
+  return shellIntro("Money with context","Income, expenses, savings and recurring obligations in one place.")
+    +`<div class="data-grid"><div class="data-card glass"><small>BALANCE</small><b>${money(state.balance)}</b></div><div class="data-card glass"><small>INCOME</small><b>${money(income)}</b></div><div class="data-card glass"><small>SPENT</small><b>${money(expense)}</b></div><div class="data-card glass"><small>NET</small><b>${money(income-expense)}</b></div></div>
+    <div class="action-row"><button class="primary" id="addExpense">+ Expense</button><button class="secondary" id="addIncome">+ Income</button><button class="secondary" id="newSubscriptionBtn">+ Subscription</button></div>
+    <div class="section-mini"><span class="section-kicker">TRANSACTIONS</span><h4>Money movement</h4></div>
+    <div class="list">${rows||`<div class="empty glass"><strong>No transactions yet</strong><span>Add income or spending.</span></div>`}</div>
+    <div class="section-mini"><span class="section-kicker">RECURRING</span><h4>Subscriptions</h4></div>
+    <div class="list">${subscriptions||`<div class="empty glass"><strong>No subscriptions</strong><span>Add recurring services so renewals become visible.</span></div>`}</div>`;
+}
+
+function renderFamily(){
+  const rows=state.people.map(p=>`<button class="list-row glass" data-open-person="${esc(p.id)}"><div class="main-copy"><b>${esc(p.name||p.title)}</b><small>${esc(p.relationship||"Person")}</small></div><span class="value">Open</span></button>`).join("");
+  return shellIntro("People who matter","People are first-class records that can connect to events, notes and follow-ups.")
+    +`<div class="action-row"><button class="primary" id="newPersonBtn">+ Add person</button></div><div class="list">${rows||`<div class="empty glass"><strong>No people yet</strong><span>Add someone when you want their information to have a home.</span></div>`}</div>`;
+}
+
+function renderPersonDetail(id){
+  const person=state.people.find(p=>p.id===id);
+  if(!person) return renderFamily();
+  currentContext={type:"person",id};
+  const events=state.events.filter(e=>e.personId===id);
+  return shellIntro(person.name||"Person",person.relationship||"Relationship")
+    +`<div class="data-grid"><div class="data-card glass"><small>RELATIONSHIP</small><b>${esc(person.relationship||"—")}</b></div><div class="data-card glass"><small>EVENTS</small><b>${events.length}</b></div></div>
+    <div class="action-row"><button class="primary" id="addPersonEventBtn">+ Event</button><button class="secondary" id="addPersonTaskBtn">+ Task</button></div>
+    <div class="section-mini"><span class="section-kicker">EVENTS</span><h4>Shared dates</h4></div>
+    <div class="list">${events.length?events.map(e=>`<div class="list-row glass"><div class="main-copy"><b>${esc(e.title)}</b><small>${esc(fmtDate(e.startAt))}</small></div></div>`).join(""):`<div class="empty glass"><strong>No events yet</strong><span>Add a birthday, meeting or plan.</span></div>`}</div>`;
+}
+
+function renderNotes(){
+  const rows=state.notes.map(n=>`<div class="list-row glass"><div class="main-copy"><b>${esc(n.title)}</b><small>${esc(n.text||"")}</small></div></div>`).join("");
+  return shellIntro("Capture once, find forever","Quick notes stay searchable and can later connect to goals or people.")
+    +`<div class="action-row"><button class="primary" id="newNoteBtn">+ New note</button></div><div class="list">${rows||`<div class="empty glass"><strong>No notes yet</strong><span>Capture an idea whenever it appears.</span></div>`}</div>`;
+}
+
+function renderJournal(){
+  const rows=state.journal.map(e=>`<div class="list-row glass"><div class="main-copy"><b>${esc(e.title)}</b><small>${esc(e.date||"")}</small><p class="journal-snippet">${esc(e.text||"")}</p></div></div>`).join("");
+  return shellIntro("Your private memory","Reflections, lessons and memories that become part of your life history.")
+    +`<div class="action-row"><button class="primary" id="newJournalBtn">+ New entry</button></div><div class="list">${rows||`<div class="empty glass"><strong>No journal entries</strong><span>Write when you have something worth remembering.</span></div>`}</div>`;
+}
+
+function renderHabits(){
+  const rows=state.habits.map(h=>`<div class="list-row glass"><div class="main-copy"><b>${esc(h.title)}</b><small>${esc(h.frequency||"Recurring")}</small></div><span class="value">${Number(h.streak||0)}d</span></div>`).join("");
+  return shellIntro("Build the person you want to be","Habits are recurring systems that can support a larger goal.")
+    +`<div class="action-row"><button class="primary" id="newHabitBtn">+ New habit</button></div><div class="list">${rows||`<div class="empty glass"><strong>No habits yet</strong><span>Add a routine only when it deserves attention.</span></div>`}</div>`;
+}
+
+function renderAssets(){
+  const rows=state.assets.map(a=>`<div class="list-row glass"><div class="main-copy"><b>${esc(a.name||a.title)}</b><small>${esc(a.category||"Asset")}</small></div><span class="value">${a.value?money(a.value):""}</span></div>`).join("");
+  const subs=state.subscriptions.map(s=>`<div class="list-row glass"><div class="main-copy"><b>${esc(s.name||s.title)}</b><small>${esc(s.frequency||"Recurring")} · ${money(s.amount||0)}</small></div><span class="value">${esc(s.renewalDate||"")}</span></div>`).join("");
+  return shellIntro("Know what you own and what bills you","Assets, subscriptions, warranties and recurring commitments.")
+    +`<div class="action-row"><button class="primary" id="newAssetBtn">+ Asset</button><button class="secondary" id="newSubscriptionBtn">+ Subscription</button></div>
+      <div class="section-mini"><span class="section-kicker">ASSETS</span><h4>What you own</h4></div>
+      <div class="list">${rows||`<div class="empty glass"><strong>No assets yet</strong><span>Add devices, vehicles, valuables or other important assets.</span></div>`}</div>
+      <div class="section-mini"><span class="section-kicker">RECURRING</span><h4>Subscriptions</h4></div>
+      <div class="list">${subs||`<div class="empty glass"><strong>No subscriptions</strong><span>Add recurring services and renewal dates.</span></div>`}</div>`;
+}
+
+function renderLifePlan(){
+  const profile=state.profile||{};
+  return shellIntro("Design the life behind the dashboard","Values, direction and long-range priorities sit above daily tasks.")
+    +`<div class="data-grid"><div class="data-card glass"><small>VALUES</small><b>${profile.values?profile.values.length:0}</b></div><div class="data-card glass"><small>ACTIVE GOALS</small><b>${state.goals.length}</b></div></div>
+      <div class="action-row"><button class="primary" id="editLifePlanBtn">+ Add direction</button></div>
+      <div class="empty glass"><strong>Your Life Plan is still yours to define</strong><span>Keep it broad: the kind of person you want to be, what matters, and what you are building toward.</span></div>`;
+}
+
+function renderInsights(){
+  const completed=state.tasks.filter(t=>t.done).length;
+  const open=state.tasks.filter(t=>!t.done).length;
+  const avgGoal=state.goals.length?Math.round(state.goals.reduce((a,g)=>a+Number(g.progress||0),0)/state.goals.length):0;
+  return shellIntro("See patterns, not noise","Insights are derived from your actual Firestore records.")
+    +`<div class="data-grid"><div class="data-card glass"><small>GOAL PROGRESS</small><b>${avgGoal}%</b></div><div class="data-card glass"><small>OPEN TASKS</small><b>${open}</b></div><div class="data-card glass"><small>COMPLETED</small><b>${completed}</b></div><div class="data-card glass"><small>UPCOMING EVENTS</small><b>${state.events.filter(e=>e.startAt&&new Date(e.startAt)>=new Date()).length}</b></div></div>`;
+}
+
+function renderSettings(){
+  const user=LifeFirebase?.getUser?.();
+  return shellIntro("Make it yours","Life Hub is backed by Firebase Cloud Firestore.")
+    +`<div class="list">
+      <div class="list-row glass"><div class="main-copy"><b>Cloud database</b><small>Cloud Firestore is authoritative.</small></div><span class="value positive">Connected</span></div>
+      <div class="list-row glass"><div class="main-copy"><b>Firebase identity</b><small>${user?`Authenticated · ${user.isAnonymous?"anonymous":"account"}`:"Not connected"}</small></div><span class="value ${user?"positive":"negative"}">${user?"Active":"Offline"}</span></div>
+      <div class="list-row glass"><div class="main-copy"><b>Data model</b><small>Versioned entities and relationships.</small></div><span class="value positive">V4</span></div>
+      <div class="list-row glass" id="exportRow"><div class="main-copy"><b>Export data</b><small>Download the complete Firestore snapshot as JSON.</small></div><span class="value">→</span></div>
+      <div class="list-row glass danger-row" id="resetRow"><div class="main-copy"><b>Reset all Life Hub data</b><small>Delete this user's local Firestore records.</small></div><span class="value negative">Reset</span></div>
+    </div>`;
+}
+
 function renderVault(){
-  return shellIntro("Private vault.","A future-ready encrypted area for credentials, recovery codes and other secrets. This prototype intentionally does not store real passwords.")
-  + `<div class="data-card glass"><span class="tag">LOCKED</span><b>Private essentials</b><small>Web Crypto + server-side encryption should be added before real secrets are stored.</small></div>
-  <div class="action-row"><button class="secondary" id="vaultInfo">Security checklist</button></div>`;
+  return shellIntro("Private vault","Real secret storage stays disabled until encryption, key handling and a proper security model are implemented.")
+    +`<div class="empty glass"><strong>Not enabled yet</strong><span>Keep passwords and recovery codes out of Life Hub for now.</span></div>`;
 }
 function renderDocuments(){
-  return shellIntro("Never hunt for an important document again.","Organize IDs, certificates, contracts, receipts, warranties and other important files.")
-  + `<div class="data-grid">${["Identity","Work","Finance","Education","Home","Receipts"].map(x=>`<div class="data-card glass"><span class="tag">FOLDER</span><b style="font-size:16px">${x}</b><small>0 files</small></div>`).join("")}</div>`;
+  return shellIntro("Important files","Document storage is the next data domain after the core daily loop.")
+    +`<div class="empty glass"><strong>No documents yet</strong><span>Files will be wired once Storage and access rules are implemented.</span></div>`;
 }
 function renderHealth(){
-  return shellIntro("Energy, not obsession.","Track simple wellbeing signals such as sleep, movement, energy and routines. Keep it supportive rather than medical.")
-  + `<div class="data-grid"><div class="data-card glass"><small>SLEEP</small><b>—</b><small>Log tonight</small></div><div class="data-card glass"><small>ENERGY</small><b>—</b><small>How do you feel?</small></div><div class="data-card glass"><small>MOVEMENT</small><b>—</b><small>Today</small></div><div class="data-card glass"><small>MOOD</small><b>—</b><small>Check in</small></div></div>`;
+  return shellIntro("Energy, not obsession","Track simple wellbeing signals only when they improve your daily system.")
+    +`<div class="empty glass"><strong>No wellbeing records</strong><span>This area stays deliberately lightweight.</span></div>`;
 }
-function renderLifePlan(){
-  return shellIntro("Design the life behind the dashboard.","This is the layer above tasks: values, long-term direction, ideal life, yearly themes, priorities and decisions.")
-  + `<div class="list">${[
-    ["North star","What does a great life look like?"],
-    ["This year","The 3–5 outcomes that matter most"],
-    ["5-year picture","Where do you want life to be heading?"],
-    ["Values","What should guide your decisions?"],
-    ["Someday","Ideas that don't need attention yet"]
-  ].map(x=>`<div class="list-row glass"><div class="main-copy"><b>${x[0]}</b><small>${x[1]}</small></div><span class="value">→</span></div>`).join("")}</div>`;
-}
-function renderTasks(){
-  const tasks=state.tasks.length?state.tasks:[{title:"Finish important thing",done:false},{title:"Reply to someone",done:false},{title:"Review finances",done:true}];
-  return shellIntro("Everything you need to do.","A single action inbox connected to goals, people, finances and calendar.")
-  + `<div class="list">${tasks.map((t,i)=>`<div class="list-row glass"><div class="main-copy"><b>${t.title}</b><small>${t.done?"Completed":"Next action"}</small></div><button class="check interactive-check ${t.done?"completed":""}" data-task-index="${i}">${t.done?"✓":"○"}</button></div>`).join("")}</div>`;
-}
-function renderAssets(){
-  return shellIntro("Know what you own and what bills you.","Track devices, vehicles, subscriptions, warranties, memberships, recurring bills and renewal dates.")
-  + `<div class="list">${["Subscriptions","Devices & electronics","Warranties","Memberships","Recurring bills"].map(x=>`<div class="list-row glass"><div class="main-copy"><b>${x}</b><small>Keep renewal dates and costs visible</small></div><span class="value">→</span></div>`).join("")}</div>`;
-}
-function renderInsights(){
-  return shellIntro("See patterns, not just numbers.","The long-term value of Life Hub is connecting your information so you can notice what is changing.")
-  + `<div class="data-grid"><div class="data-card glass"><small>FINANCIAL</small><b>Stable</b><small>Spending within plan</small></div><div class="data-card glass"><small>GOALS</small><b>Growing</b><small>3 active</small></div><div class="data-card glass"><small>ROUTINES</small><b>71%</b><small>Consistency</small></div><div class="data-card glass"><small>PEOPLE</small><b>91</b><small>Connection score</small></div></div>
-  <div class="list"><div class="list-row glass"><div class="main-copy"><b>Weekly reflection</b><small>What worked? What drained you? What deserves attention next?</small></div><span class="value positive">Start →</span></div></div>`;
-}
-function renderSettings(){
-  return shellIntro("Make it yours.","Your Life Hub should feel personal, calm and private.")
-  + `<div class="list">
-    <div class="list-row glass"><div class="main-copy"><b>Background</b><small>Current: forest rain</small></div><span class="value">Active</span></div>
-    <div class="list-row glass"><div class="main-copy"><b>Local storage</b><small>Prototype data stays in this browser</small></div><span class="value positive">On</span></div>
-    <div class="list-row glass" id="exportRow"><div class="main-copy"><b>Export my data</b><small>Download a JSON backup of prototype data</small></div><span class="value">→</span></div>
-    <div class="list-row glass" id="resetRow"><div class="main-copy"><b>Reset prototype data</b><small>Clear local demo entries</small></div><span class="value negative">Reset</span></div>
-  </div>`;
-}
-function renderGeneric(){return shellIntro("Your life, organized.","This module is ready to become part of the Life Hub system.");}
+function renderGeneric(){ return shellIntro("Ready when you are","This module becomes useful as its data model is connected."); }
 
 function openModal(title,kicker,body){
-  $("#modalTitle").textContent=title; $("#modalKicker").textContent=kicker; $("#modalBody").innerHTML=body;
-  $("#modal").classList.add("open"); $("#modal").setAttribute("aria-hidden","false");
+  $("#modalTitle").textContent=title;
+  $("#modalKicker").textContent=kicker;
+  $("#modalBody").innerHTML=body;
+  $("#modal").classList.add("open");
+  $("#modal").setAttribute("aria-hidden","false");
 }
 function closeModal(){ $("#modal").classList.remove("open"); $("#modal").setAttribute("aria-hidden","true"); }
+
+function goalOptions(selected=""){
+  return `<option value="">No goal link</option>${state.goals.map(g=>`<option value="${esc(g.id)}" ${g.id===selected?"selected":""}>${esc(g.title)}</option>`).join("")}`;
+}
+function projectOptions(selected=""){
+  return `<option value="">No project link</option>${state.projects.map(p=>`<option value="${esc(p.id)}" ${p.id===selected?"selected":""}>${esc(p.title)}</option>`).join("")}`;
+}
+
 function openQuickCapture(){
   openModal("What do you want to add?","QUICK CAPTURE",`
     <div class="capture-grid">
       <button class="capture-option" data-add="expense"><b>₹ Expense</b><small>Log spending</small></button>
       <button class="capture-option" data-add="income"><b>＋ Income</b><small>Log money in</small></button>
-      <button class="capture-option" data-add="goal"><b>◎ Goal</b><small>Create a target</small></button>
+      <button class="capture-option" data-add="goal"><b>◎ Goal</b><small>Create an outcome</small></button>
+      <button class="capture-option" data-add="project"><b>▱ Project</b><small>Work inside a goal</small></button>
+      <button class="capture-option" data-add="task"><b>✓ Task</b><small>Add a next action</small></button>
+      <button class="capture-option" data-add="event"><b>◷ Event</b><small>Put something on time</small></button>
+      <button class="capture-option" data-add="wishlist"><b>♡ Wishlist</b><small>Save a future want</small></button>
+      <button class="capture-option" data-add="person"><b>♧ Person</b><small>Add someone important</small></button>
       <button class="capture-option" data-add="note"><b>≡ Note</b><small>Capture an idea</small></button>
       <button class="capture-option" data-add="journal"><b>◫ Journal</b><small>Write a reflection</small></button>
-      <button class="capture-option" data-add="wishlist"><b>♡ Wishlist</b><small>Save something</small></button>
-      <button class="capture-option" data-add="task"><b>✓ Task</b><small>Remember an action</small></button>
-      <button class="capture-option" data-add="person"><b>♧ Person</b><small>Remember someone</small></button>
     </div>`);
 }
+
+function openEntryForm(type){
+  const actions=`<div class="form-actions"><button class="secondary" data-close-modal>Cancel</button><button class="primary" id="saveForm">Save</button></div>`;
+  const forms={
+    expense:["ADD EXPENSE","Money",`<div class="form"><div class="field"><label>WHAT?</label><input id="fTitle" placeholder="Groceries, fuel, bill..."></div><div class="field"><label>AMOUNT (₹)</label><input id="fAmount" type="number" min="0" placeholder="0"></div><div class="field"><label>CATEGORY</label><input id="fCat" placeholder="Living, travel, food..."></div>${actions}</div>`],
+    income:["ADD INCOME","Money",`<div class="form"><div class="field"><label>WHAT?</label><input id="fTitle" placeholder="Salary, bonus, refund..."></div><div class="field"><label>AMOUNT (₹)</label><input id="fAmount" type="number" min="0" placeholder="0"></div>${actions}</div>`],
+    goal:["NEW GOAL","Direction",`<div class="form"><div class="field"><label>GOAL</label><input id="fTitle" placeholder="What outcome do you want?"></div><div class="field"><label>WHY / TARGET</label><input id="fTarget" placeholder="Why it matters or what success means"></div><div class="field"><label>AREA</label><input id="fArea" placeholder="Career, money, family..."></div>${actions}</div>`],
+    project:["NEW PROJECT","Goal",`<div class="form"><div class="field"><label>PROJECT</label><input id="fTitle" placeholder="What piece of work moves the goal?"></div><div class="field"><label>DESCRIPTION</label><input id="fDesc" placeholder="Outcome or scope"></div><div class="field"><label>GOAL</label><select id="fGoal">${goalOptions(currentContext?.type==="goal"?currentContext.id:"")}</select></div>${actions}</div>`],
+    task:["NEW TASK","Action",`<div class="form"><div class="field"><label>NEXT ACTION</label><input id="fTitle" placeholder="What needs to happen?"></div><div class="field"><label>GOAL</label><select id="fGoal">${goalOptions(currentContext?.type==="goal"?currentContext.id:"")}</select></div><div class="field"><label>PROJECT</label><select id="fProject">${projectOptions(currentContext?.type==="project"?currentContext.id:"")}</select></div><div class="field"><label>DUE</label><input id="fDate" type="datetime-local"></div>${actions}</div>`],
+    event:["NEW EVENT","Plan",`<div class="form"><div class="field"><label>EVENT</label><input id="fTitle" placeholder="Test drive, birthday, meeting..."></div><div class="field"><label>DATE / TIME</label><input id="fDate" type="datetime-local"></div><div class="field"><label>GOAL</label><select id="fGoal">${goalOptions(currentContext?.type==="goal"?currentContext.id:"")}</select></div><div class="field"><label>PROJECT</label><select id="fProject">${projectOptions(currentContext?.type==="project"?currentContext.id:"")}</select></div><div class="field"><label>PERSON</label><select id="fPerson"><option value="">No person link</option>${state.people.map(p=>`<option value="${esc(p.id)}">${esc(p.name)}</option>`).join("")}</select></div>${actions}</div>`],
+    wishlist:["WISHLIST ITEM","Want",`<div class="form"><div class="field"><label>ITEM</label><input id="fTitle" placeholder="What do you want?"></div><div class="field"><label>PRICE (₹)</label><input id="fAmount" type="number" min="0" placeholder="0"></div><div class="field"><label>PRIORITY</label><select id="fCat"><option>High</option><option>Medium</option><option>Low</option></select></div>${actions}</div>`],
+    person:["ADD PERSON","People",`<div class="form"><div class="field"><label>NAME</label><input id="fTitle" placeholder="Name"></div><div class="field"><label>RELATIONSHIP</label><input id="fRelation" placeholder="Family, friend, colleague..."></div>${actions}</div>`],
+    note:["QUICK NOTE","Capture",`<div class="form"><div class="field"><label>TITLE</label><input id="fTitle" placeholder="Note title"></div><div class="field"><label>NOTE</label><textarea id="fText" placeholder="Write anything..."></textarea></div>${actions}</div>`],
+    journal:["JOURNAL ENTRY","Memory",`<div class="form"><div class="field"><label>TITLE</label><input id="fTitle" placeholder="How was today?"></div><div class="field"><label>REFLECTION</label><textarea id="fText" placeholder="Write honestly..."></textarea></div>${actions}</div>`],
+    subscription:["NEW SUBSCRIPTION","Money",`<div class="form"><div class="field"><label>NAME</label><input id="fTitle" placeholder="Netflix, software, membership..."></div><div class="field"><label>AMOUNT (₹)</label><input id="fAmount" type="number" min="0" placeholder="0"></div><div class="field"><label>FREQUENCY</label><select id="fFreq"><option>Monthly</option><option>Yearly</option><option>Weekly</option></select></div><div class="field"><label>RENEWAL DATE</label><input id="fDate" type="date"></div>${actions}</div>`],
+    asset:["NEW ASSET","Life admin",`<div class="form"><div class="field"><label>NAME</label><input id="fTitle" placeholder="Laptop, car, phone..."></div><div class="field"><label>CATEGORY</label><input id="fCat" placeholder="Electronics, vehicle, home..."></div><div class="field"><label>VALUE (₹)</label><input id="fAmount" type="number" min="0" placeholder="0"></div>${actions}</div>`],
+    lifePlan:["LIFE DIRECTION","Vision",`<div class="form"><div class="field"><label>WHAT MATTERS?</label><input id="fTitle" placeholder="A value, direction or long-range intention"></div><div class="field"><label>DETAIL</label><textarea id="fText" placeholder="Write the kind of life you're trying to build."></textarea></div>${actions}</div>`]
+  };
+  const [title,kicker,body]=forms[type]||forms.note;
+  openModal(title,kicker,body);
+  $("#saveForm").onclick=()=>saveForm(type);
+  $$("[data-close-modal]").forEach(b=>b.onclick=closeModal);
+}
+
+async function saveForm(type){
+  try{
+    let record;
+    if(type==="expense"){
+      const amount=Math.abs(Number($("#fAmount").value||0));
+      record=await create("transactions",{title:$("#fTitle").value||"Expense",cat:$("#fCat").value||"General",amount:-amount,type:"out"});
+      state.transactions.push(record); state.balance-=amount;
+    } else if(type==="income"){
+      const amount=Math.abs(Number($("#fAmount").value||0));
+      record=await create("transactions",{title:$("#fTitle").value||"Income",amount,type:"in"});
+      state.transactions.push(record); state.balance+=amount;
+    } else if(type==="goal"){
+      record=await create("goals",{title:$("#fTitle").value||"Goal",target:$("#fTarget").value||"",area:$("#fArea").value||"",progress:0});
+      state.goals.push(record);
+    } else if(type==="project"){
+      const goalId=$("#fGoal").value || (currentContext?.type==="goal"?currentContext.id:null);
+      record=await create("projects",{title:$("#fTitle").value||"Project",description:$("#fDesc").value||"",goalId});
+      state.projects.push(record);
+      if(goalId) await link("goal",goalId,"has","project",record.id);
+    } else if(type==="task"){
+      const goalId=$("#fGoal").value || (currentContext?.type==="goal"?currentContext.id:null);
+      const projectId=$("#fProject").value || (currentContext?.type==="project"?currentContext.id:null);
+      record=await create("tasks",{title:$("#fTitle").value||"Task",done:false,goalId,projectId,dueAt:$("#fDate").value||null});
+      state.tasks.push(record);
+      if(goalId) await link("goal",goalId,"supports","task",record.id);
+      if(projectId) await link("project",projectId,"has","task",record.id);
+    } else if(type==="event"){
+      const goalId=$("#fGoal").value || (currentContext?.type==="goal"?currentContext.id:null);
+      const projectId=$("#fProject").value || (currentContext?.type==="project"?currentContext.id:null);
+      const personId=$("#fPerson").value || (currentContext?.type==="person"?currentContext.id:null);
+      record=await create("events",{title:$("#fTitle").value||"Event",startAt:$("#fDate").value||null,goalId,projectId,personId});
+      state.events.push(record);
+      if(goalId) await link("goal",goalId,"has","event",record.id);
+      if(projectId) await link("project",projectId,"scheduled-as","event",record.id);
+      if(personId) await link("person",personId,"attends","event",record.id);
+    } else if(type==="wishlist"){
+      record=await create("wishlist",{title:$("#fTitle").value||"Wishlist item",price:Number($("#fAmount").value||0),priority:$("#fCat").value});
+      state.wishes.push(record);
+    } else if(type==="person"){
+      record=await create("people",{name:$("#fTitle").value||"Person",relationship:$("#fRelation").value||""});
+      state.people.push(record);
+    } else if(type==="note"){
+      record=await create("notes",{title:$("#fTitle").value||"Untitled note",text:$("#fText").value||"",date:now()});
+      state.notes.push(record);
+    } else if(type==="journal"){
+      record=await create("journal",{title:$("#fTitle").value||"Journal entry",text:$("#fText").value||"",date:now()});
+      state.journal.push(record);
+    } else if(type==="subscription"){
+      record=await create("subscriptions",{name:$("#fTitle").value||"Subscription",amount:Number($("#fAmount").value||0),frequency:$("#fFreq").value,renewalDate:$("#fDate").value||""});
+      state.subscriptions.push(record);
+    } else if(type==="asset"){
+      record=await create("assets",{name:$("#fTitle").value||"Asset",category:$("#fCat").value||"",value:Number($("#fAmount").value||0)});
+      state.assets.push(record);
+    } else if(type==="lifePlan"){
+      const profile=state.profile||{};
+      profile.values=[...(profile.values||[]),{title:$("#fTitle").value||"",detail:$("#fText").value||""}];
+      state.profile=await LifeDB.saveUserProfile(profile);
+    }
+
+    closeModal();
+    updateHome();
+    toast("Saved to Firestore");
+    refreshCurrentView();
+  }catch(error){
+    console.error(error);
+    toast(fireError(error));
+  }
+}
+
+async function toggleTask(id){
+  const task=state.tasks.find(t=>t.id===id);
+  if(!task) return;
+  try{
+    task.done=!task.done;
+    await LifeDB.create("tasks",task);
+    updateHome();
+    refreshCurrentView();
+    toast(task.done?"Task completed":"Task reopened");
+  }catch(error){ task.done=!task.done; toast(fireError(error)); }
+}
+
+async function fundWishlist(id){
+  const wish=state.wishes.find(w=>w.id===id);
+  if(!wish) return;
+  if(wish.goalId){ toast("This item already has a savings goal"); return; }
+  try{
+    const goal=await create("goals",{title:`Save for ${wish.title}`,target:money(wish.price),area:"Wishlist",progress:0,wishlistId:wish.id});
+    wish.goalId=goal.id;
+    await LifeDB.create("wishlist",wish);
+    state.goals.push(goal);
+    updateHome(); refreshCurrentView(); toast("Savings goal created");
+  }catch(error){ toast(fireError(error)); }
+}
+
+async function purchaseWishlist(id){
+  const wish=state.wishes.find(w=>w.id===id);
+  if(!wish) return;
+  openModal("Record purchase","MONEY",`
+    <div class="form">
+      <div class="field"><label>ITEM</label><input id="purchaseTitle" value="${esc(wish.title)}"></div>
+      <div class="field"><label>AMOUNT (₹)</label><input id="purchaseAmount" type="number" min="0" value="${Number(wish.price||0)}"></div>
+      <div class="form-actions"><button class="secondary" data-close-modal>Cancel</button><button class="primary" id="confirmPurchase">Record purchase</button></div>
+    </div>`);
+  $$("[data-close-modal]").forEach(b=>b.onclick=closeModal);
+  $("#confirmPurchase").onclick=async()=>{
+    try{
+      const amount=Math.abs(Number($("#purchaseAmount").value||0));
+      const tx=await create("transactions",{title:$("#purchaseTitle").value||wish.title,amount:-amount,type:"out",cat:"Wishlist purchase",relatedWishlistId:wish.id});
+      wish.purchased=true;
+      await LifeDB.create("wishlist",wish);
+      state.transactions.push(tx); state.balance-=amount;
+      await link("wishlist",wish.id,"purchased-as","transaction",tx.id);
+      closeModal(); updateHome(); refreshCurrentView(); toast("Purchase recorded");
+    }catch(error){ toast(fireError(error)); }
+  };
+}
+
+function refreshCurrentView(){
+  if(currentContext?.type==="goal"){
+    $("#pageContent").innerHTML=renderGoalDetail(currentContext.id);
+    bindDynamic();
+  }else if(currentContext?.type==="project"){
+    $("#pageContent").innerHTML=renderProjectDetail(currentContext.id);
+    bindDynamic();
+  }else if(currentContext?.type==="person"){
+    $("#pageContent").innerHTML=renderPersonDetail(currentContext.id);
+    bindDynamic();
+  }else if(currentPage!=="home"){
+    renderPage(currentPage);
+  }else{
+    updateHome();
+  }
+}
+
+async function resetAll(){
+  if(!confirm("Reset ALL Life Hub data in this browser/account? This cannot be undone.")) return;
+  try{
+    await LifeDB.reset();
+    location.reload();
+  }catch(error){ toast(fireError(error)); }
+}
+
 function openAddFor(page){
-  const map={finances:"expense",goals:"goal",wishlist:"wishlist",notes:"note",journal:"journal",tasks:"task"};
+  const map={
+    finances:"expense",goals:"goal",wishlist:"wishlist",family:"person",
+    journal:"journal",notes:"note",calendar:"event",tasks:"task",
+    assets:"asset",lifePlan:"lifePlan"
+  };
   openEntryForm(map[page]||"note");
 }
-function openEntryForm(type){
-  const configs={
-    expense:["ADD EXPENSE","Money",`<div class="form"><div class="field"><label>WHAT?</label><input id="fTitle" placeholder="e.g. Groceries"></div><div class="field"><label>AMOUNT (₹)</label><input id="fAmount" type="number" placeholder="0"></div><div class="field"><label>CATEGORY</label><input id="fCat" placeholder="Food, travel, bills..."></div><div class="form-actions"><button class="secondary" data-close-modal>Cancel</button><button class="primary" id="saveExpense">Save expense</button></div></div>`],
-    income:["ADD INCOME","Money",`<div class="form"><div class="field"><label>WHAT?</label><input id="fTitle" placeholder="e.g. Salary"></div><div class="field"><label>AMOUNT (₹)</label><input id="fAmount" type="number" placeholder="0"></div><div class="field"><label>NOTE</label><input id="fCat" placeholder="Optional"></div><div class="form-actions"><button class="secondary" data-close-modal>Cancel</button><button class="primary" id="saveIncome">Save income</button></div></div>`],
-    goal:["NEW GOAL","Direction",`<div class="form"><div class="field"><label>GOAL</label><input id="fTitle" placeholder="What do you want to achieve?"></div><div class="field"><label>TARGET / WHY</label><input id="fCat" placeholder="Why does this matter?"></div><div class="form-actions"><button class="secondary" data-close-modal>Cancel</button><button class="primary" id="saveGoal">Create goal</button></div></div>`],
-    note:["QUICK NOTE","Capture",`<div class="form"><div class="field"><label>TITLE</label><input id="fTitle" placeholder="Note title"></div><div class="field"><label>NOTE</label><textarea id="fText" placeholder="Write anything..."></textarea></div><div class="form-actions"><button class="secondary" data-close-modal>Cancel</button><button class="primary" id="saveNote">Save note</button></div></div>`],
-    journal:["JOURNAL ENTRY","Memory",`<div class="form"><div class="field"><label>TITLE</label><input id="fTitle" placeholder="How was today?"></div><div class="field"><label>REFLECTION</label><textarea id="fText" placeholder="Write honestly..."></textarea></div><div class="form-actions"><button class="secondary" data-close-modal>Cancel</button><button class="primary" id="saveJournal">Save entry</button></div></div>`],
-    wishlist:["WISHLIST ITEM","Want",`<div class="form"><div class="field"><label>ITEM</label><input id="fTitle" placeholder="What do you want?"></div><div class="field"><label>PRICE (₹)</label><input id="fAmount" type="number" placeholder="0"></div><div class="field"><label>PRIORITY</label><select id="fCat"><option>High</option><option>Medium</option><option>Low</option></select></div><div class="form-actions"><button class="secondary" data-close-modal>Cancel</button><button class="primary" id="saveWishlist">Save item</button></div></div>`],
-    task:["NEW TASK","Action",`<div class="form"><div class="field"><label>NEXT ACTION</label><input id="fTitle" placeholder="What needs to happen?"></div><div class="form-actions"><button class="secondary" data-close-modal>Cancel</button><button class="primary" id="saveTask">Add task</button></div></div>`],
-    person:["ADD PERSON","People",`<div class="form"><div class="field"><label>NAME</label><input id="fTitle" placeholder="Name"></div><div class="field"><label>RELATION / NOTE</label><input id="fCat" placeholder="Family, friend, colleague..."></div><div class="form-actions"><button class="secondary" data-close-modal>Cancel</button><button class="primary" id="savePerson">Save</button></div></div>`]
-  };
-  const cfg=configs[type]||configs.note; openModal(cfg[0],cfg[1],cfg[2]);
-  bindForms(type);
-}
-function bindForms(type){
-  const closeBtns=$$("[data-close-modal]"); closeBtns.forEach(b=>b.onclick=closeModal);
-  const saveAnd=(fn,msg)=>{fn();save();closeModal();updateHome();toast(msg);};
-  if(type==="expense") $("#saveExpense").onclick=()=>saveAnd(()=>{const a=Number($("#fAmount").value||0);state.balance-=a;state.transactions.unshift({title:$("#fTitle").value||"Expense",cat:$("#fCat").value||"General",amount:-a,type:"out"})},"Expense saved");
-  if(type==="income") $("#saveIncome").onclick=()=>saveAnd(()=>{const a=Number($("#fAmount").value||0);state.balance+=a;state.transactions.unshift({title:$("#fTitle").value||"Income",cat:$("#fCat").value||"Income",amount:a,type:"in"})},"Income saved");
-  if(type==="goal") $("#saveGoal").onclick=()=>saveAnd(()=>state.goals.unshift({title:$("#fTitle").value||"New goal",target:$("#fCat").value||"Personal",progress:0}),"Goal created");
-  if(type==="note") $("#saveNote").onclick=()=>saveAnd(()=>state.notes.unshift({title:$("#fTitle").value||"Untitled",text:$("#fText").value||"",date:today()}),"Note saved");
-  if(type==="journal") $("#saveJournal").onclick=()=>saveAnd(()=>state.journal.unshift({title:$("#fTitle").value||today(),text:$("#fText").value||"",date:today()}),"Journal saved");
-  if(type==="wishlist") $("#saveWishlist").onclick=()=>saveAnd(()=>state.wishes.unshift({title:$("#fTitle").value||"Wishlist item",price:Number($("#fAmount").value||0),priority:$("#fCat").value}),"Wishlist saved");
-  if(type==="task") $("#saveTask").onclick=()=>saveAnd(()=>state.tasks.unshift({title:$("#fTitle").value||"New task",done:false}),"Task added");
-  if(type==="person") $("#savePerson").onclick=()=>{closeModal();toast("Person saved — profile view can be added next.");};
+
+function openRecord(type,id){
+  if(type==="event"){
+    const e=state.events.find(x=>x.id===id);
+    if(!e) return;
+    openModal(e.title||"Event","EVENT",`
+      <div class="list">
+        <div class="list-row glass"><div class="main-copy"><b>When</b><small>${esc(fmtDate(e.startAt))}</small></div></div>
+        <div class="list-row glass"><div class="main-copy"><b>Goal</b><small>${esc(state.goals.find(g=>g.id===e.goalId)?.title||"None")}</small></div></div>
+        <div class="list-row glass"><div class="main-copy"><b>Project</b><small>${esc(state.projects.find(p=>p.id===e.projectId)?.title||"None")}</small></div></div>
+      </div>
+      <div class="form-actions"><button class="primary" data-close-modal>Close</button></div>`);
+    $$("[data-close-modal]").forEach(b=>b.onclick=closeModal);
+  }
 }
 
 function bindDynamic(){
-  $$(".interactive-check").forEach(btn=>btn.onclick=()=>{
-    btn.classList.toggle("completed"); btn.textContent=btn.classList.contains("completed")?"✓":"○"; toast(btn.classList.contains("completed")?"Done ✓":"Marked incomplete");
-  });
+  $("#newGoalBtn")?.addEventListener("click",()=>openEntryForm("goal"));
+  $("#newTaskBtn")?.addEventListener("click",()=>openEntryForm("task"));
+  $("#newEventBtn")?.addEventListener("click",()=>openEntryForm("event"));
+  $("#newWishBtn")?.addEventListener("click",()=>openEntryForm("wishlist"));
+  $("#newPersonBtn")?.addEventListener("click",()=>openEntryForm("person"));
+  $("#newNoteBtn")?.addEventListener("click",()=>openEntryForm("note"));
+  $("#newJournalBtn")?.addEventListener("click",()=>openEntryForm("journal"));
+  $("#newSubscriptionBtn")?.addEventListener("click",()=>openEntryForm("subscription"));
+  $("#newAssetBtn")?.addEventListener("click",()=>openEntryForm("asset"));
+  $("#editLifePlanBtn")?.addEventListener("click",()=>openEntryForm("lifePlan"));
   $("#addExpense")?.addEventListener("click",()=>openEntryForm("expense"));
   $("#addIncome")?.addEventListener("click",()=>openEntryForm("income"));
-  $("#newNote")?.addEventListener("click",()=>openEntryForm("note"));
-  $("#newJournal")?.addEventListener("click",()=>openEntryForm("journal"));
-  $("#vaultInfo")?.addEventListener("click",()=>toast("Use real encryption + WebAuthn before storing secrets."));
-  $("#exportRow")?.addEventListener("click",()=>{
-    const blob=new Blob([JSON.stringify(state,null,2)],{type:"application/json"});
-    const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="life-hub-backup.json";a.click();URL.revokeObjectURL(a.href);toast("Backup exported");
+
+  $("#addProjectBtn")?.addEventListener("click",()=>openEntryForm("project"));
+  $("#addGoalTaskBtn")?.addEventListener("click",()=>openEntryForm("task"));
+  $("#addGoalEventBtn")?.addEventListener("click",()=>openEntryForm("event"));
+  $("#addProjectTaskBtn")?.addEventListener("click",()=>openEntryForm("task"));
+  $("#addProjectEventBtn")?.addEventListener("click",()=>openEntryForm("event"));
+  $("#addPersonEventBtn")?.addEventListener("click",()=>openEntryForm("event"));
+  $("#addPersonTaskBtn")?.addEventListener("click",()=>openEntryForm("task"));
+
+  $$("[data-open-goal]").forEach(b=>b.onclick=()=>{
+    currentContext={type:"goal",id:b.dataset.openGoal};
+    $("#pageKicker").textContent="GOAL"; $("#pageTitle").textContent="Goal";
+    refreshCurrentView();
   });
-  $("#resetRow")?.addEventListener("click",()=>{
-    if(confirm("Reset all prototype data stored in this browser?")){localStorage.clear();location.reload();}
+  $$("[data-open-project]").forEach(b=>b.onclick=()=>{
+    currentContext={type:"project",id:b.dataset.openProject};
+    $("#pageKicker").textContent="PROJECT"; $("#pageTitle").textContent="Project";
+    refreshCurrentView();
   });
+  $$("[data-open-person]").forEach(b=>b.onclick=()=>{
+    currentContext={type:"person",id:b.dataset.openPerson};
+    $("#pageKicker").textContent="PERSON"; $("#pageTitle").textContent="Person";
+    refreshCurrentView();
+  });
+  $$(".task-toggle").forEach(b=>b.onclick=()=>toggleTask(b.dataset.taskId));
+  $$("[data-fund-wish]").forEach(b=>b.onclick=()=>fundWishlist(b.dataset.fundWish));
+  $$("[data-buy-wish]").forEach(b=>b.onclick=()=>purchaseWishlist(b.dataset.buyWish));
+  $$("[data-open-record]").forEach(b=>b.onclick=()=>openRecord(b.dataset.openRecord,b.dataset.id));
+
+  $("#exportRow")?.addEventListener("click",async()=>{
+    try{
+      const snapshot=await LifeDB.exportAll();
+      const blob=new Blob([JSON.stringify(snapshot,null,2)],{type:"application/json"});
+      const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="life-hub-backup.json"; a.click(); URL.revokeObjectURL(a.href);
+      toast("Backup exported");
+    }catch(error){ toast(fireError(error)); }
+  });
+  $("#resetRow")?.addEventListener("click",resetAll);
 }
 
 document.addEventListener("click",e=>{
-  const pageBtn=e.target.closest("[data-page]");
-  if(pageBtn) openPage(pageBtn.dataset.page);
+  const page=e.target.closest("[data-page]");
+  if(page) openPage(page.dataset.page);
   const add=e.target.closest("[data-add]");
-  if(add) openEntryForm(add.dataset.add);
-  if(e.target.matches("[data-close-modal]")) closeModal();
+  if(add){ closeModal(); openEntryForm(add.dataset.add); }
+  const result=e.target.closest("[data-result-store]");
+  if(result){
+    closeSearch();
+    const route={people:"family",goals:"goals",projects:"goals",tasks:"tasks",events:"calendar",transactions:"finances",wishlist:"wishlist",notes:"notes",journal:"journal",habits:"habits",assets:"assets",subscriptions:"assets"};
+    openPage(route[result.dataset.resultStore]||"insights");
+  }
 });
-$("#menuBtn").onclick=openDrawer; $("#closeDrawer").onclick=closeDrawer; $("#drawerBackdrop").onclick=closeDrawer;
-$("#searchBtn").onclick=openSearch; $("#closeSearch").onclick=closeSearch;
-$("#globalSearch").addEventListener("input",e=>renderSearch(e.target.value));
-$("#backBtn").onclick=closePage; $("#fab").onclick=openQuickCapture;
-$("#moreNav").onclick=openDrawer; $("#profileBtn").onclick=()=>openPage("settings");
-$("#attentionBtn").onclick=()=>openPage("insights");
+
+$("#menuBtn").onclick=openDrawer;
+$("#closeDrawer").onclick=closeDrawer;
+$("#drawerBackdrop").onclick=closeDrawer;
+$("#searchBtn").onclick=openSearch;
+$("#closeSearch").onclick=closeSearch;
+let searchTimer;
+$("#globalSearch").addEventListener("input",e=>{clearTimeout(searchTimer);searchTimer=setTimeout(()=>searchRecords(e.target.value),120);});
 $("#globalSearch").addEventListener("keydown",e=>{if(e.key==="Escape")closeSearch();});
-document.addEventListener("click",e=>{
-  const result=e.target.closest("[data-search-page]");
-  if(result){closeSearch();openPage(result.dataset.searchPage);}
+$("#backBtn").onclick=()=>{
+  if(currentContext?.type==="goal"){currentContext=null;renderPage("goals");return;}
+  if(currentContext?.type==="project"){currentContext=null;renderPage("goals");return;}
+  if(currentContext?.type==="person"){currentContext=null;renderPage("family");return;}
+  closePage();
+};
+$("#fab").onclick=openQuickCapture;
+$("#moreNav").onclick=openDrawer;
+$("#profileBtn").onclick=()=>openPage("settings");
+$("#drawerResetBtn").onclick=resetAll;
+$("#attentionBtn").onclick=()=>openPage("insights");
+$$(".nav-item[data-page]").forEach(n=>n.addEventListener("click",()=>{
+  $$(".nav-item").forEach(x=>x.classList.remove("active"));
+  n.classList.add("active");
+}));
+
+document.addEventListener("keydown",e=>{
+  if(e.key==="Escape"){closeModal();closeDrawer();closePage();}
 });
-$("#customizeBtn").onclick=()=>toast("Dashboard customization is ready for the next build.");
-$$(".nav-item[data-page]").forEach(n=>n.addEventListener("click",()=>{ $$(".nav-item").forEach(x=>x.classList.remove("active"));n.classList.add("active"); }));
 
-// Escape closes transient UI.
-document.addEventListener("keydown",e=>{if(e.key==="Escape"){closeModal();closeDrawer();closePage();}});
+greeting();
+hydrate().then(()=>{
+  updateHome();
+  if(currentPage!=="home") renderPage(currentPage);
+});
 
-greeting(); updateHome(); updateAttention(); bindDynamic();
-
-if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => {
-    navigator.serviceWorker.register("./sw.js").catch(() => {});
-  });
+if("serviceWorker" in navigator){
+  window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));
 }
