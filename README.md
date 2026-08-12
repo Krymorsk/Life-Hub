@@ -442,3 +442,15 @@ The V36 controller now contains the intended Today/Attention, Relationships, Mon
 - Google sign-in button is present again on login and wired to Firebase GoogleAuthProvider.
 - Email/password remains enabled.
 - Reminders module form and save path are present.
+
+
+## V39 — Syntax regression fix
+- Fixed the reminder form accidentally inserted outside the `forms` object, which caused `Unexpected token 'const'` and stopped the entire controller from loading.
+- Restored reminder save and button-binding paths.
+- Cache-busted controller/data scripts to V39.
+
+
+## V40 — Clean deployment fix
+- Renamed runtime modules to `data-v40.js` and `script-v40.js` so an old `script.js?v=36` cannot be reused by GitHub Pages/browser cache.
+- Added favicon links to prevent the default root-level `/favicon.ico` 404.
+- Service worker cache now points only to the V40 filenames.
